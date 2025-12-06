@@ -2400,7 +2400,6 @@ div#main-app > header {
         }
 
         // ฟังก์ชันเพิ่มผู้ร่วมเดินทางในหน้าแก้ไข
-        // ฟังก์ชันเพิ่มผู้ร่วมเดินทางในหน้าแก้ไข (ฉบับสมบูรณ์)
 function addEditAttendeeField(name = '', position = '') {
     const list = document.getElementById('edit-attendees-list');
     const attendeeDiv = document.createElement('div');
@@ -2487,7 +2486,34 @@ function addEditAttendeeField(name = '', position = '') {
         }
     });
 }
-        // ✅ ฟังก์ชัน toggle สำหรับหน้าแก้ไข
+// ฟังก์ชันเพิ่มผู้ร่วมเดินทางในหน้า Admin (แก้ไขและออกคำสั่ง)
+function addAdminAttendeeField(name = '', position = '') {
+    const list = document.getElementById('admin-command-attendees-list');
+    
+    // ป้องกัน error กรณีหา element ไม่เจอ
+    if (!list) {
+        console.error("Element 'admin-command-attendees-list' not found.");
+        return;
+    }
+
+    const div = document.createElement('div');
+    // ใช้ Style ให้ดูเรียบร้อยและแยกสัดส่วน
+    div.className = 'grid grid-cols-1 md:grid-cols-2 gap-2 mb-2 items-center bg-gray-50 p-2 rounded border border-gray-200';
+
+    div.innerHTML = `
+        <input type="text" class="form-input admin-att-name w-full" placeholder="ชื่อ-นามสกุล" value="${name}">
+        
+        <div class="flex gap-2">
+            <input type="text" class="form-input admin-att-pos w-full" placeholder="ตำแหน่ง" value="${position}">
+            <button type="button" class="btn btn-danger btn-sm px-3 font-bold hover:bg-red-700 transition" onclick="this.closest('.grid').remove()" title="ลบรายชื่อนี้">
+                ×
+            </button>
+        </div>
+    `;
+    
+    list.appendChild(div);
+}      
+// ✅ ฟังก์ชัน toggle สำหรับหน้าแก้ไข
         function toggleEditExpenseOptions() {
             const partialOptions = document.getElementById('edit-partial-expense-options');
             const totalContainer = document.getElementById('edit-total-expense-container');
