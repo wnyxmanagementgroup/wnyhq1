@@ -778,71 +778,73 @@ div#main-app > header {
                 <!-- เพิ่มในส่วน page-content -->
 <div id="admin-generate-command-page" class="page-view hidden">
     <div class="flex justify-between items-center mb-6">
-        <h2 class="text-2xl font-bold">ออกคำสั่งไปราชการ</h2>
+        <h2 class="text-2xl font-bold">แก้ไขและออกคำสั่งไปราชการ</h2>
         <button id="back-to-admin-command" class="btn bg-gray-500 text-white">← กลับสู่หน้าจัดการ</button>
     </div>
     
     <form id="admin-command-form">
         <input type="hidden" id="admin-command-request-id">
         
-        <fieldset class="border p-4 rounded-lg mb-6">
-            <legend>ข้อมูลคำขอ</legend>
+        <fieldset class="border p-4 rounded-lg mb-6 bg-white/50">
+            <legend>ข้อมูลทั่วไป (แก้ไขได้)</legend>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>
                     <label class="form-label">รหัสคำขอ</label>
-                    <p id="admin-command-request-id-display" class="font-bold text-indigo-700"></p>
+                    <input type="text" id="admin-command-request-id-display" class="form-input bg-gray-100 text-gray-500" readonly>
                 </div>
                 <div>
-                    <label class="form-label">วันที่สร้าง</label>
-                    <p id="admin-command-doc-date-display"></p>
+                    <label class="form-label">วันที่เอกสาร</label>
+                    <input type="date" id="admin-command-doc-date" class="form-input">
                 </div>
             </div>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>
                     <label class="form-label">ชื่อผู้ขอ</label>
-                    <p id="admin-command-requester-name"></p>
+                    <input type="text" id="admin-command-requester-name" class="form-input">
                 </div>
                 <div>
                     <label class="form-label">ตำแหน่ง</label>
-                    <p id="admin-command-requester-position"></p>
+                    <input type="text" id="admin-command-requester-position" class="form-input">
                 </div>
             </div>
             <div class="mb-4">
                 <label class="form-label">สถานที่ไปราชการ</label>
-                <p id="admin-command-location"></p>
+                <input type="text" id="admin-command-location" class="form-input">
             </div>
             <div class="mb-4">
                 <label class="form-label">วัตถุประสงค์</label>
-                <p id="admin-command-purpose"></p>
+                <textarea id="admin-command-purpose" rows="2" class="form-input"></textarea>
             </div>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label class="form-label">วันที่เริ่มต้น</label>
-                    <p id="admin-command-start-date"></p>
+                    <input type="date" id="admin-command-start-date" class="form-input">
                 </div>
                 <div>
                     <label class="form-label">วันที่สิ้นสุด</label>
-                    <p id="admin-command-end-date"></p>
+                    <input type="date" id="admin-command-end-date" class="form-input">
                 </div>
             </div>
         </fieldset>
         
-        <fieldset class="border p-4 rounded-lg mb-6">
-            <legend>ผู้ร่วมเดินทาง</legend>
+        <fieldset class="border p-4 rounded-lg mb-6 bg-white/50">
+            <legend>ผู้ร่วมเดินทาง (แก้ไขได้)</legend>
             <div id="admin-command-attendees-list"></div>
+            <button type="button" id="admin-add-attendee-btn" class="btn btn-sm btn-success mt-2">+ เพิ่มผู้ร่วมเดินทาง</button>
         </fieldset>
         
-        <fieldset class="border p-4 rounded-lg mb-6">
-            <legend>การเบิกค่าใช้จ่าย</legend>
-            <div id="admin-command-expense-info"></div>
+        <fieldset class="border p-4 rounded-lg mb-6 bg-gray-100">
+            <legend class="text-gray-500 text-sm">ข้อมูลประกอบ (แก้ไขที่ต้นทาง)</legend>
+            <div id="admin-command-expense-info" class="text-sm text-gray-600 mb-2"></div>
+            <div id="admin-command-vehicle-info" class="text-sm text-gray-600"></div>
+            <input type="hidden" id="admin-expense-option">
+            <input type="hidden" id="admin-expense-items">
+            <input type="hidden" id="admin-total-expense">
+            <input type="hidden" id="admin-vehicle-option">
+            <input type="hidden" id="admin-license-plate">
         </fieldset>
         
-        <fieldset class="border p-4 rounded-lg mb-6">
-            <legend>การเดินทาง</legend>
-            <div id="admin-command-vehicle-info"></div>
-        </fieldset>
-        
-        <fieldset class="border p-4 rounded-lg mb-6">
+        <fieldset class="border p-4 rounded-lg mb-6 bg-blue-50 border-blue-200">
             <legend>รูปแบบคำสั่ง</legend>
             <div class="space-y-3">
                 <div>
@@ -861,18 +863,19 @@ div#main-app > header {
         </fieldset>
         
         <div class="flex justify-center gap-4 mt-10 border-t pt-6 border-gray-200">
-            <button type="button" id="admin-generate-command-button" class="btn btn-primary text-lg">
+            <button type="button" id="admin-generate-command-button" class="btn btn-primary text-lg shadow-lg">
                 <div id="admin-generate-command-loader" class="loader hidden"></div>
-                <span id="admin-generate-command-button-text">สร้างคำสั่ง</span>
+                <span id="admin-generate-command-button-text">บันทึกการแก้ไขและสร้างคำสั่ง</span>
             </button>
         </div>
     </form>
     
-    <div id="admin-command-result" class="hidden mt-6 p-6 text-center">
-        <h3 id="admin-command-result-title" class="font-bold text-lg"></h3>
+    <div id="admin-command-result" class="hidden mt-6 p-6 text-center bg-green-50 rounded-xl border border-green-200">
+        <h3 id="admin-command-result-title" class="font-bold text-lg text-green-800"></h3>
         <p id="admin-command-result-message" class="mt-2 text-gray-700"></p>
         <div class="flex justify-center flex-wrap gap-4 mt-4">
-            <a id="admin-command-result-link" href="#" target="_blank" class="btn btn-success">เปิดไฟล์คำสั่ง</a>
+            <a id="admin-command-result-link" href="#" target="_blank" class="btn btn-success transform hover:scale-105 transition">เปิดไฟล์คำสั่ง</a>
+            <button onclick="switchPage('command-generation-page')" class="btn bg-gray-500 text-white">กลับหน้าจัดการ</button>
         </div>
     </div>
 </div>
@@ -2114,108 +2117,74 @@ div#main-app > header {
 
         // ✅ แก้ไขฟังก์ชัน openAdminGenerateCommand เป็น async
         async function openAdminGenerateCommand(requestId) {
-            try {
-                if (!checkAdminAccess()) {
-                    showAlert('ผิดพลาด', 'คุณไม่มีสิทธิ์ใช้งานฟังก์ชันนี้');
-                    return;
-                }
-                document.getElementById('admin-command-result').classList.add('hidden');
-                document.getElementById('admin-command-form').classList.remove('hidden');
+    try {
+        if (!checkAdminAccess()) return;
+        
+        // Reset UI
+        document.getElementById('admin-command-result').classList.add('hidden');
+        document.getElementById('admin-command-form').classList.remove('hidden');
+        document.getElementById('admin-command-attendees-list').innerHTML = '';
 
-                console.log("เปิดหน้าการออกคำสั่งสำหรับ:", requestId);
-                
-                // โหลดข้อมูลคำขอ
-                const result = await apiCall('GET', 'getDraftRequest', { requestId: requestId });
-                
-                if (result.status === 'success' && result.data) {
-                    const requestData = result.data;
-                    
-                    // เติมข้อมูลในฟอร์ม
-                    document.getElementById('admin-command-request-id').value = requestId;
-                    document.getElementById('admin-command-request-id-display').textContent = requestData.id || requestId;
-                    document.getElementById('admin-command-doc-date-display').textContent = formatDisplayDate(requestData.docDate);
-                    document.getElementById('admin-command-requester-name').textContent = requestData.requesterName || '';
-                    document.getElementById('admin-command-requester-position').textContent = requestData.requesterPosition || '';
-                    document.getElementById('admin-command-location').textContent = requestData.location || '';
-                    document.getElementById('admin-command-purpose').textContent = requestData.purpose || '';
-                    document.getElementById('admin-command-start-date').textContent = formatDisplayDate(requestData.startDate);
-                    document.getElementById('admin-command-end-date').textContent = formatDisplayDate(requestData.endDate);
-                    
-                    // เติมข้อมูลผู้ร่วมเดินทาง
-                    const attendeesList = document.getElementById('admin-command-attendees-list');
-                    attendeesList.innerHTML = '';
-                    
-                    if (requestData.attendees && requestData.attendees.length > 0) {
-                        requestData.attendees.forEach(attendee => {
-                            const attendeeDiv = document.createElement('div');
-                            attendeeDiv.className = 'border-b pb-2 mb-2';
-                            attendeeDiv.innerHTML = `
-                                <p><strong>ชื่อ:</strong> ${attendee.name}</p>
-                                <p><strong>ตำแหน่ง:</strong> ${attendee.position}</p>
-                            `;
-                            attendeesList.appendChild(attendeeDiv);
-                        });
-                    } else {
-                        attendeesList.innerHTML = '<p class="text-gray-500">ไม่มีผู้ร่วมเดินทาง</p>';
-                    }
-                    
-                    // เติมข้อมูลค่าใช้จ่าย
-                    const expenseInfo = document.getElementById('admin-command-expense-info');
-                    if (requestData.expenseOption === 'partial' && requestData.expenseItems && requestData.expenseItems.length > 0) {
-                        const expenseItems = Array.isArray(requestData.expenseItems) ? 
-                            requestData.expenseItems : 
-                            JSON.parse(requestData.expenseItems || '[]');
-                        
-                        let expenseHtml = '<p><strong>เบิกค่าใช้จ่าย:</strong> ใช่</p><ul class="list-disc pl-5 mt-2">';
-                        expenseItems.forEach(item => {
-                            expenseHtml += `<li>${item.name}${item.detail ? ` (${item.detail})` : ''}</li>`;
-                        });
-                        expenseHtml += `</ul><p class="mt-2"><strong>รวมเป็นเงิน:</strong> ${requestData.totalExpense || 0} บาท</p>`;
-                        expenseInfo.innerHTML = expenseHtml;
-                    } else {
-                        expenseInfo.innerHTML = '<p><strong>เบิกค่าใช้จ่าย:</strong> ไม่เบิก</p>';
-                    }
-                    
-                    // เติมข้อมูลการเดินทาง
-                    const vehicleInfo = document.getElementById('admin-command-vehicle-info');
-                    let vehicleHtml = '';
-                    
-                    if (requestData.vehicleOption) {
-                        const vehicleOptions = Array.isArray(requestData.vehicleOption) ? 
-                            requestData.vehicleOption : 
-                            [requestData.vehicleOption];
-                        
-                        vehicleOptions.forEach(option => {
-                            switch(option) {
-                                case 'gov':
-                                    vehicleHtml += '<p>✓ รถยนต์ราชการ (รถโรงเรียน)</p>';
-                                    break;
-                                case 'private':
-                                    vehicleHtml += `<p>✓ รถยนต์ส่วนตัว${requestData.licensePlate ? ` (ทะเบียน: ${requestData.licensePlate})` : ''}</p>`;
-                                    break;
-                                case 'public':
-                                    vehicleHtml += `<p>✓ พาหนะอื่นๆ${requestData.publicVehicleDetails ? ` (${requestData.publicVehicleDetails})` : ''}</p>`;
-                                    break;
-                            }
-                        });
-                    } else {
-                        vehicleHtml = '<p class="text-gray-500">ไม่ระบุวิธีการเดินทาง</p>';
-                    }
-                    
-                    vehicleInfo.innerHTML = vehicleHtml;
-                    
-                    // เปิดหน้า
-                    await switchPage('admin-generate-command-page');
-                    
-                } else {
-                    showAlert('ผิดพลาด', 'ไม่สามารถโหลดข้อมูลคำขอได้');
-                }
-            } catch (error) {
-                console.error('Error opening admin generate command page:', error);
-                showAlert('ผิดพลาด', 'เกิดข้อผิดพลาดในการโหลดข้อมูล: ' + error.message);
+        // Load Data
+        const result = await apiCall('GET', 'getDraftRequest', { requestId: requestId });
+        
+        if (result.status === 'success' && result.data) {
+            const data = result.data;
+            
+            // Populate Inputs
+            document.getElementById('admin-command-request-id').value = requestId;
+            document.getElementById('admin-command-request-id-display').value = requestId; // เปลี่ยนเป็น value
+            
+            // Helper convert Date to Input format (YYYY-MM-DD)
+            const toInputDate = (dateStr) => {
+                if(!dateStr) return '';
+                const d = new Date(dateStr);
+                return !isNaN(d) ? d.toISOString().split('T')[0] : '';
+            };
+
+            document.getElementById('admin-command-doc-date').value = toInputDate(data.docDate);
+            document.getElementById('admin-command-requester-name').value = data.requesterName || '';
+            document.getElementById('admin-command-requester-position').value = data.requesterPosition || '';
+            document.getElementById('admin-command-location').value = data.location || '';
+            document.getElementById('admin-command-purpose').value = data.purpose || '';
+            document.getElementById('admin-command-start-date').value = toInputDate(data.startDate);
+            document.getElementById('admin-command-end-date').value = toInputDate(data.endDate);
+
+            // Populate Attendees
+            if (data.attendees && data.attendees.length > 0) {
+                data.attendees.forEach(att => addAdminAttendeeField(att.name, att.position));
+            } else {
+                // ถ้าไม่มีผู้ร่วมเดินทาง ให้เพิ่มช่องว่างๆ ไว้ 1 อัน (Optional) หรือปล่อยว่าง
             }
-        }
 
+            // Store other immutable data (for now)
+            document.getElementById('admin-expense-option').value = data.expenseOption;
+            document.getElementById('admin-expense-items').value = JSON.stringify(data.expenseItems || []);
+            document.getElementById('admin-total-expense').value = data.totalExpense;
+            document.getElementById('admin-vehicle-option').value = data.vehicleOption;
+            document.getElementById('admin-license-plate').value = data.licensePlate;
+
+            // Render Static Info for Context
+            document.getElementById('admin-command-vehicle-info').textContent = 
+                `พาหนะ: ${data.vehicleOption === 'gov' ? 'รถราชการ' : data.vehicleOption === 'private' ? 'รถส่วนตัว ' + (data.licensePlate||'') : 'อื่นๆ'}`;
+
+            await switchPage('admin-generate-command-page');
+            
+            // ตั้งค่า Event Listener ปุ่มเพิ่มคน (ต้องทำตรงนี้หรือใน setupEventListeners ก็ได้)
+            const addBtn = document.getElementById('admin-add-attendee-btn');
+            // ลบ event เก่าก่อนเพื่อป้องกัน double bind (ถ้ามีวิธีที่ดีกว่าควรย้ายไป setupEventListeners)
+            const newBtn = addBtn.cloneNode(true);
+            addBtn.parentNode.replaceChild(newBtn, addBtn);
+            newBtn.addEventListener('click', () => addAdminAttendeeField());
+
+        } else {
+            showAlert('ผิดพลาด', 'ไม่สามารถโหลดข้อมูลคำขอได้');
+        }
+    } catch (error) {
+        console.error(error);
+        showAlert('ผิดพลาด', 'เกิดข้อผิดพลาด: ' + error.message);
+    }
+}
         // --- EDIT PAGE FUNCTIONS ---
 
         // ✅ ฟังก์ชันเติมข้อมูลในฟอร์มแก้ไข - เวอร์ชันสมบูรณ์
@@ -2431,55 +2400,93 @@ div#main-app > header {
         }
 
         // ฟังก์ชันเพิ่มผู้ร่วมเดินทางในหน้าแก้ไข
-        function addEditAttendeeField(name = '', position = '') {
-            const list = document.getElementById('edit-attendees-list');
-            const attendeeDiv = document.createElement('div');
-            attendeeDiv.className = 'grid grid-cols-1 md:grid-cols-3 gap-2 items-center mb-2';
-            
-            // ตรวจสอบว่าตำแหน่งตรงกับ options ที่มีหรือไม่
-            const isStandardPosition = ['ผู้อำนวยการ', 'รองผู้อำนวยการ', 'ครู', 'ครูผู้ช่วย', 'พนักงานราชการ', 'ครูอัตราจ้าง', 'พนักงานขับรถ', 'นักเรียน'].includes(position);
-            const selectValue = isStandardPosition ? position : (position ? 'other' : '');
-            
-            attendeeDiv.innerHTML = `
-                <input type="text" class="form-input attendee-name md:col-span-1" placeholder="ชื่อ-นามสกุล" value="${name}" required>
-                <div class="attendee-position-wrapper md:col-span-1">
-                    <select class="form-input attendee-position-select">
-                        <option value="">-- เลือกตำแหน่ง --</option>
-                        <option value="ผู้อำนวยการ">ผู้อำนวยการ</option>
-                        <option value="รองผู้อำนวยการ">รองผู้อำนวยการ</option>
-                        <option value="ครู">ครู</option>
-                        <option value="ครูผู้ช่วย">ครูผู้ช่วย</option>
-                        <option value="พนักงานราชการ">พนักงานราชการ</option>
-                        <option value="ครูอัตราจ้าง">ครูอัตราจ้าง</option>
-                        <option value="พนักงานขับรถ">พนักงานขับรถ</option>
-                        <option value="นักเรียน">นักเรียน</option>
-                        <option value="other">อื่นๆ (โปรดระบุ)</option>
-                    </select>
-                    <input type="text" class="form-input attendee-position-other hidden mt-1" placeholder="ระบุตำแหน่ง" value="${!isStandardPosition && position ? position : ''}">
-                </div>
-                <button type="button" class="btn btn-danger btn-sm" onclick="this.parentElement.remove()">ลบ</button>
-            `;
-            list.appendChild(attendeeDiv);
-            
-            const select = attendeeDiv.querySelector('.attendee-position-select');
-            const otherInput = attendeeDiv.querySelector('.attendee-position-other');
+        // ฟังก์ชันเพิ่มผู้ร่วมเดินทางในหน้าแก้ไข (ฉบับสมบูรณ์)
+function addEditAttendeeField(name = '', position = '') {
+    const list = document.getElementById('edit-attendees-list');
+    const attendeeDiv = document.createElement('div');
+    attendeeDiv.className = 'grid grid-cols-1 md:grid-cols-3 gap-2 items-center mb-2 bg-gray-50 p-3 rounded border border-gray-200';
 
-            // ตั้งค่าค่าเริ่มต้น
-            if (selectValue) {
-                select.value = selectValue;
-                if (selectValue === 'other') {
-                    otherInput.classList.remove('hidden');
-                }
-            }
+    // รายชื่อตำแหน่งมาตรฐาน (ต้องตรงกับใน HTML <option>)
+    const standardPositions = [
+        'ผู้อำนวยการ', 
+        'รองผู้อำนวยการ', 
+        'ครู', 
+        'ครูผู้ช่วย', 
+        'พนักงานราชการ', 
+        'ครูอัตราจ้าง', 
+        'พนักงานขับรถ', 
+        'นักเรียน'
+    ];
 
-            select.addEventListener('change', () => {
-                otherInput.classList.toggle('hidden', select.value !== 'other');
-                if (select.value !== 'other') {
-                    otherInput.value = '';
-                }
-            });
+    // ตรวจสอบว่าตำแหน่งที่ส่งมา (จากฐานข้อมูล) เป็นตำแหน่งมาตรฐานหรือไม่?
+    const isStandard = standardPositions.includes(position);
+    
+    // กำหนดค่าที่จะเลือกใน Dropdown
+    // - ถ้าเป็นมาตรฐาน: เลือกค่านั้น
+    // - ถ้ามีข้อมูลแต่ไม่ใช่มารตรฐาน: เลือก 'other'
+    // - ถ้าไม่มีข้อมูล (กดเพิ่มใหม่): เลือก '' (ค่าว่าง)
+    const selectValue = isStandard ? position : (position ? 'other' : '');
+    
+    // กำหนดค่าที่จะใส่ในช่องกรอกเอง (Text Input)
+    // - ถ้าเลือก 'other' ให้ใส่ค่าตำแหน่งเดิมลงไป
+    // - ถ้าไม่ใช่ ให้เป็นค่าว่าง
+    const otherValue = isStandard ? '' : position;
+
+    // สร้าง HTML
+    attendeeDiv.innerHTML = `
+        <div class="md:col-span-1">
+            <label class="text-xs text-gray-500 mb-1 block">ชื่อ-นามสกุล</label>
+            <input type="text" class="form-input attendee-name w-full" placeholder="ระบุชื่อ-นามสกุล" value="${name}" required>
+        </div>
+        
+        <div class="attendee-position-wrapper md:col-span-1">
+            <label class="text-xs text-gray-500 mb-1 block">ตำแหน่ง</label>
+            <select class="form-input attendee-position-select w-full">
+                <option value="">-- เลือกตำแหน่ง --</option>
+                <option value="ผู้อำนวยการ">ผู้อำนวยการ</option>
+                <option value="รองผู้อำนวยการ">รองผู้อำนวยการ</option>
+                <option value="ครู">ครู</option>
+                <option value="ครูผู้ช่วย">ครูผู้ช่วย</option>
+                <option value="พนักงานราชการ">พนักงานราชการ</option>
+                <option value="ครูอัตราจ้าง">ครูอัตราจ้าง</option>
+                <option value="พนักงานขับรถ">พนักงานขับรถ</option>
+                <option value="นักเรียน">นักเรียน</option>
+                <option value="other">อื่นๆ (โปรดระบุ)</option>
+            </select>
+            <input type="text" class="form-input attendee-position-other mt-2 w-full ${selectValue === 'other' ? '' : 'hidden'}" placeholder="ระบุตำแหน่งอื่นๆ" value="${otherValue}">
+        </div>
+        
+        <div class="flex items-end h-full pb-1 justify-center md:justify-start">
+            <button type="button" class="btn btn-danger btn-sm h-10 w-full md:w-auto px-4" onclick="this.closest('.grid').remove()">
+                ลบรายชื่อ
+            </button>
+        </div>
+    `;
+    
+    list.appendChild(attendeeDiv);
+
+    // --- จัดการ Event Listener ---
+    const select = attendeeDiv.querySelector('.attendee-position-select');
+    const otherInput = attendeeDiv.querySelector('.attendee-position-other');
+
+    // ตั้งค่าเริ่มต้นให้กับ Select ตามที่คำนวณไว้ข้างบน
+    if (selectValue) {
+        select.value = selectValue;
+    }
+
+    // เมื่อมีการเปลี่ยนตัวเลือกใน Dropdown
+    select.addEventListener('change', () => {
+        if (select.value === 'other') {
+            // ถ้าเลือก "อื่นๆ" ให้แสดงช่องกรอกและโฟกัสไปที่นั่น
+            otherInput.classList.remove('hidden');
+            otherInput.focus();
+        } else {
+            // ถ้าเลือกตำแหน่งมาตรฐาน ให้ซ่อนช่องกรอกและล้างค่า
+            otherInput.classList.add('hidden');
+            otherInput.value = '';
         }
-
+    });
+}
         // ✅ ฟังก์ชัน toggle สำหรับหน้าแก้ไข
         function toggleEditExpenseOptions() {
             const partialOptions = document.getElementById('edit-partial-expense-options');
@@ -3910,49 +3917,73 @@ div#main-app > header {
 
         // ฟังก์ชันสร้างคำสั่งโดยแอดมิน
         async function handleAdminGenerateCommand() {
-            const requestId = document.getElementById('admin-command-request-id').value;
-            const commandType = document.querySelector('input[name="admin-command-type"]:checked')?.value;
-            
-            if (!commandType) {
-                showAlert('ผิดพลาด', 'กรุณาเลือกรูปแบบคำสั่ง');
-                return;
-            }
-
-            toggleLoader('admin-generate-command-button', true);
-
-            try {
-                const result = await apiCall('POST', 'approveCommand', {
-                    requestId: requestId,
-                    templateType: commandType
-                });
-                
-                if (result.status === 'success') {
-                    document.getElementById('admin-command-result-title').textContent = 'สร้างคำสั่งสำเร็จ!';
-                    document.getElementById('admin-command-result-message').textContent = `คำสั่งสำหรับ ID ${requestId} ถูกสร้างแล้ว`;
-                    
-                    if (result.data.pdfUrl) {
-        document.getElementById('admin-command-result-link').href = result.data.pdfUrl;
-        document.getElementById('admin-command-result-link').classList.remove('hidden');
-    } else {
-        document.getElementById('admin-command-result-link').classList.add('hidden');
-        document.getElementById('admin-command-result-message').textContent += ' (แต่ยังไม่สามารถสร้างไฟล์ PDF ได้ในขณะนี้)';
+    const requestId = document.getElementById('admin-command-request-id').value;
+    const commandType = document.querySelector('input[name="admin-command-type"]:checked')?.value;
+    
+    if (!commandType) {
+        showAlert('ผิดพลาด', 'กรุณาเลือกรูปแบบคำสั่ง');
+        return;
     }
-    
-    document.getElementById('admin-command-form').classList.add('hidden');
-    
-    showAlert("สำเร็จ", "สร้างคำสั่งเรียบร้อยแล้ว");
-    
-} else {
-    showAlert("ผิดพลาด", result.message || "ไม่สามารถสร้างคำสั่งได้");
-}
-            } catch (error) {
-                console.error("Error generating admin command:", error);
-                showAlert("เกิดข้อผิดพลาด", "ไม่สามารถสร้างคำสั่งได้: " + error.message);
-            } finally {
-                toggleLoader('admin-generate-command-button', false);
-            }
-        }
 
+    // รวบรวมข้อมูลผู้ร่วมเดินทางใหม่
+    const attendees = [];
+    document.querySelectorAll('#admin-command-attendees-list > div').forEach(div => {
+        const name = div.querySelector('.admin-att-name').value.trim();
+        const pos = div.querySelector('.admin-att-pos').value.trim();
+        if (name) attendees.push({ name, position: pos });
+    });
+
+    // สร้าง Payload ข้อมูลที่แก้ไขแล้ว
+    const updatedData = {
+        requestId: requestId,
+        templateType: commandType,
+        // ข้อมูลที่แก้ไขได้
+        docDate: document.getElementById('admin-command-doc-date').value,
+        requesterName: document.getElementById('admin-command-requester-name').value.trim(),
+        requesterPosition: document.getElementById('admin-command-requester-position').value.trim(),
+        location: document.getElementById('admin-command-location').value.trim(),
+        purpose: document.getElementById('admin-command-purpose').value.trim(),
+        startDate: document.getElementById('admin-command-start-date').value,
+        endDate: document.getElementById('admin-command-end-date').value,
+        attendees: attendees,
+        // ข้อมูลเดิมที่ซ่อนไว้
+        expenseOption: document.getElementById('admin-expense-option').value,
+        expenseItems: document.getElementById('admin-expense-items').value, // ส่งเป็น string JSON ไปเลย เดี๋ยวไป parse ฝั่งนู้นหรือแก้ให้รับได้
+        totalExpense: document.getElementById('admin-total-expense').value,
+        vehicleOption: document.getElementById('admin-vehicle-option').value,
+        licensePlate: document.getElementById('admin-license-plate').value
+    };
+
+    toggleLoader('admin-generate-command-button', true);
+
+    try {
+        // ใช้ชื่อฟังก์ชันเดิม approveCommand แต่ส่งข้อมูลชุดใหม่ไป
+        const result = await apiCall('POST', 'approveCommand', updatedData);
+        
+        if (result.status === 'success') {
+            document.getElementById('admin-command-result-title').textContent = 'บันทึกและสร้างคำสั่งสำเร็จ!';
+            document.getElementById('admin-command-result-message').textContent = `ข้อมูลถูกอัปเดตและสร้างคำสั่งแล้ว`;
+            
+            if (result.data.pdfUrl) {
+                document.getElementById('admin-command-result-link').href = result.data.pdfUrl;
+                document.getElementById('admin-command-result-link').classList.remove('hidden');
+            }
+            
+            document.getElementById('admin-command-form').classList.add('hidden');
+            document.getElementById('admin-command-result').classList.remove('hidden');
+            
+            // รีโหลดข้อมูลใหม่เผื่อมีการกลับไปหน้าตาราง
+            clearRequestsCache(); 
+        } else {
+            showAlert("ผิดพลาด", result.message || "ไม่สามารถสร้างคำสั่งได้");
+        }
+    } catch (error) {
+        console.error("Error generating admin command:", error);
+        showAlert("เกิดข้อผิดพลาด", "ไม่สามารถสร้างคำสั่งได้: " + error.message);
+    } finally {
+        toggleLoader('admin-generate-command-button', false);
+    }
+}
         // ฟังก์ชันส่งออกรายงานสถิติ
         async function exportStatsReport() {
             try {
