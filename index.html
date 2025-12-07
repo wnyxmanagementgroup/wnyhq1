@@ -4172,18 +4172,7 @@ function addAdminAttendeeField(name = '', position = '') {
 
        async function loadPublicWeeklyData() {
             try {
-                // แสดงวันที่ของสัปดาห์ปัจจุบัน
-                const now = new Date();
-                const startOfWeek = new Date(now);
-                startOfWeek.setDate(now.getDate() - now.getDay() + 1); // วันจันทร์
-                const endOfWeek = new Date(now);
-                endOfWeek.setDate(now.getDate() - now.getDay() + 7); // วันอาทิตย์
-                
-                const dateOptions = { day: 'numeric', month: 'short', year: '2-digit' };
-                document.getElementById('current-week-display').textContent = 
-                    `${startOfWeek.toLocaleDateString('th-TH', dateOptions)} - ${endOfWeek.toLocaleDateString('th-TH', dateOptions)}`;
-
-                // [แก้ไข] เรียกข้อมูล Requests และ Memos พร้อมกัน เพื่อหาไฟล์ที่สมบูรณ์
+                // [แก้ไข] เรียกข้อมูล Requests และ Memos พร้อมกัน
                 const [requestsResult, memosResult] = await Promise.all([
                     apiCall('GET', 'getAllRequests'),
                     apiCall('GET', 'getAllMemos')
@@ -4195,21 +4184,23 @@ function addAdminAttendeeField(name = '', position = '') {
 
                     // [แก้ไข] ผสานข้อมูล: นำไฟล์ที่สมบูรณ์จาก Memo มาใส่ใน Request
                     const enrichedRequests = requests.map(req => {
-                        // ค้นหา Memo ที่ตรงกับ Request ID นี้
                         const relatedMemo = memos.find(m => m.refNumber === req.id);
                         return {
                             ...req,
-                            // ดึงลิงก์ไฟล์คำสั่งที่สมบูรณ์มาเก็บไว้ (ถ้ามี)
                             completedCommandUrl: relatedMemo ? relatedMemo.completedCommandUrl : null,
-                            // ดึงสถานะจาก Memo มาด้วย (เพราะแม่นยำกว่า)
                             realStatus: relatedMemo ? relatedMemo.status : req.status
                         };
                     });
 
+                    // เก็บข้อมูลลงตัวแปร Global สำหรับใช้ใน Modal
+                    currentPublicWeeklyData = enrichedRequests; 
+
+                    // ส่งไปแสดงผล (ให้ฟังก์ชัน render คำนวณวันเอง)
                     renderPublicTable(enrichedRequests);
                 } else {
                     document.getElementById('public-weekly-list').innerHTML = 
                         `<tr><td colspan="4" class="text-center py-4 text-red-500">ไม่สามารถโหลดข้อมูลได้</td></tr>`;
+                    document.getElementById('current-week-display').textContent = "Connection Error";
                 }
             } catch (error) {
                 console.error("Error loading public data:", error);
@@ -4217,31 +4208,62 @@ function addAdminAttendeeField(name = '', position = '') {
                     `<tr><td colspan="4" class="text-center py-4 text-gray-500">ไม่พบรายการข้อมูล หรือระบบต้องการการเข้าสู่ระบบ</td></tr>`;
             }
         }
-
         // ตัวแปร Global สำหรับเก็บข้อมูลสัปดาห์ปัจจุบัน เพื่อใช้เปิด Modal
         let currentPublicWeeklyData = [];
-
-       function renderPublicTable(requests) {
+function renderPublicTable(requests) {
             const tbody = document.getElementById('public-weekly-list');
+            
+            // --- [แก้ไขใหม่] ลอจิกคำนวณวันจันทร์-อาทิตย์ ของสัปดาห์ปัจจุบัน ---
             const now = new Date();
+            const dayOfWeek = now.getDay(); // 0 (อาทิตย์) - 6 (เสาร์)
             
-            // หาวันจันทร์และอาทิตย์ของสัปดาห์นี้
-            const currentDay = now.getDay(); 
-            const diffToMonday = now.getDate() - currentDay + (currentDay === 0 ? -6 : 1);
-            const monday = new Date(now.setDate(diffToMonday));
-            monday.setHours(0,0,0,0);
+            // ถ้าวันนี้เป็นอาทิตย์ (0) ให้ย้อนกลับไป 6 วันเพื่อหาจันทร์
+            // ถ้าเป็นวันอื่น ให้ย้อนกลับไป (dayOfWeek - 1) วัน
+            const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
             
+            // สร้างวันจันทร์ (Set เวลาเป็น 00:00:00.000)
+            const monday = new Date(now);
+            monday.setDate(now.getDate() - daysToMonday);
+            monday.setHours(0, 0, 0, 0);
+            
+            // สร้างวันอาทิตย์ (Set เวลาเป็น 23:59:59.999)
             const sunday = new Date(monday);
             sunday.setDate(monday.getDate() + 6);
-            sunday.setHours(23,59,59,999);
+            sunday.setHours(23, 59, 59, 999);
 
-            // กรองข้อมูลสัปดาห์นี้
+            // แสดงวันที่บนหน้าเว็บ
+            const dateOptions = { day: 'numeric', month: 'short', year: '2-digit' };
+            document.getElementById('current-week-display').textContent = 
+                `${monday.toLocaleDateString('th-TH', dateOptions)} - ${sunday.toLocaleDateString('th-TH', dateOptions)}`;
+
+            // --- กรองข้อมูลสัปดาห์นี้ ---
             const weeklyRequests = requests.filter(req => {
                 if (!req.startDate || !req.endDate) return false;
-                const start = new Date(req.startDate);
-                const end = new Date(req.endDate);
-                return (start <= sunday && end >= monday);
+                
+                // แปลงวันที่จากข้อมูล (Backend ส่งมาเป็น YYYY-MM-DD)
+                const reqStart = new Date(req.startDate);
+                const reqEnd = new Date(req.endDate);
+                
+                // [สำคัญ] ล้างเวลาของข้อมูลให้เป็น 00:00 เพื่อเปรียบเทียบแค่วันที่
+                // ป้องกันกรณี Timezone ทำให้เวลาเคลื่อน
+                reqStart.setHours(0,0,0,0);
+                reqEnd.setHours(0,0,0,0);
+                
+                // ลอจิก: รายการที่คาบเกี่ยวสัปดาห์นี้
+                // (วันเริ่ม น้อยกว่าหรือเท่ากับ วันอาทิตย์) และ (วันจบ มากกว่าหรือเท่ากับ วันจันทร์)
+                // ต้องปรับ monday/sunday ให้เป็นขอบเขตที่กว้างที่สุดสำหรับการเปรียบเทียบ
+                
+                const scopeMonday = new Date(monday); 
+                scopeMonday.setHours(0,0,0,0); 
+                
+                const scopeSunday = new Date(sunday);
+                scopeSunday.setHours(23,59,59,999); 
+
+                return (reqStart <= scopeSunday && reqEnd >= scopeMonday);
             }).sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
+
+            // อัพเดตข้อมูล Global เฉพาะที่กรองแล้ว (เพื่อให้ Modal แสดงถูกคน)
+            currentPublicWeeklyData = weeklyRequests;
 
             // ถ้าไม่มีข้อมูล
             if (weeklyRequests.length === 0) {
@@ -4249,7 +4271,8 @@ function addAdminAttendeeField(name = '', position = '') {
                 return;
             }
 
-            tbody.innerHTML = weeklyRequests.map((req) => {
+            // Render ตาราง
+            tbody.innerHTML = weeklyRequests.map((req, index) => {
                 // 1. จัดการรายชื่อผู้ร่วม
                 let attendeesList = [];
                 if (typeof req.attendees === 'string') {
@@ -4259,8 +4282,15 @@ function addAdminAttendeeField(name = '', position = '') {
                 }
 
                 let attendeesText = "";
-                if (attendeesList.length > 0) {
-                    attendeesText = `<div class="text-xs text-gray-500 mt-1">👥 และคณะรวม ${attendeesList.length + 1} คน</div>`;
+                // เช็คทั้ง attendeesList และ attendeeCount (เผื่อมาจาก API แบบไหน)
+                const count = attendeesList.length > 0 ? attendeesList.length : (req.attendeeCount || 0);
+                
+                if (count > 0) {
+                    // [แก้ไข] เพิ่ม onclick เพื่อเปิด Modal ดูรายชื่อ
+                    attendeesText = `
+                        <div class="text-xs text-indigo-500 mt-1 cursor-pointer hover:underline" onclick="openPublicAttendeeModal(${index})">
+                            👥 และคณะรวม ${count + 1} คน
+                        </div>`;
                 }
 
                 // 2. จัดรูปแบบวันที่
@@ -4271,26 +4301,23 @@ function addAdminAttendeeField(name = '', position = '') {
                     dateText += ` - ${formatDisplayDate(req.endDate)}`;
                 }
 
-                // 3. เลือกไฟล์คำสั่ง (ใช้ไฟล์สมบูรณ์จากแอดมินเท่านั้น)
+                // 3. เลือกไฟล์คำสั่ง
                 const finalCommandUrl = req.completedCommandUrl; 
-                
                 let actionHtml = '';
                 
                 if (finalCommandUrl && finalCommandUrl.trim() !== "") {
-                    // กรณีมีไฟล์สมบูรณ์
                     actionHtml = `
                         <a href="${finalCommandUrl}" target="_blank" class="btn bg-green-600 hover:bg-green-700 text-white btn-sm shadow-md transition-transform hover:scale-105 inline-flex items-center gap-1">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                             </svg>
-                            ดูคำสั่ง (สมบูรณ์)
+                            ดูคำสั่ง
                         </a>
                     `;
                 } else {
-                    // กรณีไม่มีไฟล์
                     let displayStatus = req.realStatus || req.status;
                     let badgeClass = 'bg-gray-100 text-gray-600';
-                    let icon = '';
+                    let icon = '🔄';
                     
                     if (displayStatus === 'Pending' || displayStatus === 'กำลังดำเนินการ') {
                         badgeClass = 'bg-yellow-100 text-yellow-700 border border-yellow-200';
@@ -4302,13 +4329,14 @@ function addAdminAttendeeField(name = '', position = '') {
                         badgeClass = 'bg-blue-50 text-blue-600 border border-blue-100';
                         icon = '📝';
                         displayStatus = 'รอออกคำสั่ง';
-                    } else {
-                        badgeClass = 'bg-gray-100 text-gray-600 border border-gray-200';
-                        icon = '🔄';
+                    } else if (displayStatus === 'เสร็จสิ้น/รับไฟล์ไปใช้งาน' || displayStatus === 'เสร็จสิ้น') {
+                         badgeClass = 'bg-green-100 text-green-700 border border-green-200';
+                         icon = '✅';
+                         displayStatus = 'เสร็จสิ้น';
                     }
 
                     actionHtml = `
-                        <span class="${badgeClass} px-3 py-1 rounded-full text-xs font-medium">
+                        <span class="${badgeClass} px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap">
                             ${icon} ${translateStatus(displayStatus)}
                         </span>
                     `;
