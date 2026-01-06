@@ -1,8 +1,5 @@
-// --- AUTH FUNCTIONS ---
-
 async function handleLogin(e) {
     e.preventDefault();
-    
     const username = document.getElementById('username').value.trim();
     const password = document.getElementById('password').value;
 
@@ -15,14 +12,7 @@ async function handleLogin(e) {
     document.getElementById('login-error').classList.add('hidden');
     
     try {
-        console.log('Attempting login for:', username);
-        const result = await apiCall('POST', 'verifyCredentials', { 
-            username: username, 
-            password: password 
-        });
-        
-        console.log('Login result:', result);
-        
+        const result = await apiCall('POST', 'verifyCredentials', { username, password });
         if (result.status === 'success') {
             sessionStorage.setItem('currentUser', JSON.stringify(result.user));
             window.currentUser = result.user;
@@ -36,7 +26,6 @@ async function handleLogin(e) {
             document.getElementById('login-error').classList.remove('hidden');
         }
     } catch (error) {
-        console.error('Login error:', error);
         document.getElementById('login-error').textContent = 'เกิดข้อผิดพลาดในการเข้าสู่ระบบ: ' + error.message;
         document.getElementById('login-error').classList.remove('hidden');
     } finally {
@@ -44,7 +33,6 @@ async function handleLogin(e) {
     }
 }
 
-// ฟังก์ชัน handleForgotPassword
 async function handleForgotPassword(e) {
     e.preventDefault();
     const email = document.getElementById('forgot-password-email').value.trim();
@@ -52,9 +40,7 @@ async function handleForgotPassword(e) {
         showAlert('ผิดพลาด', 'กรุณากรอกอีเมลที่ลงทะเบียนไว้');
         return;
     }
-
     toggleLoader('forgot-password-submit-button', true);
-
     try {
         const result = await apiCall('POST', 'forgotPassword', { email });
         if (result.status === 'success') {
@@ -71,29 +57,18 @@ async function handleForgotPassword(e) {
     }
 }
 
-// ✅ ฟังก์ชันออกจากระบบ
 function handleLogout() {
-    console.log("🚪 Logging out...");
-    
-    const navEdit = document.getElementById('nav-edit');
-    if (navEdit) {
-        navEdit.classList.add('hidden');
-    }
-    
+    document.getElementById('nav-edit').classList.add('hidden');
     document.getElementById('edit-page').classList.add('hidden');
-    
     sessionStorage.removeItem('currentUser');
     sessionStorage.removeItem('currentEditRequestId');
     window.currentUser = null;
-    
     showLoginScreen();
     document.getElementById('login-form').reset();
-    console.log("✅ Logout completed");
 }
 
 async function handleRegister(e) {
     e.preventDefault();
-    
     const formData = {
         username: document.getElementById('register-username').value.trim(),
         password: document.getElementById('register-password').value,
@@ -103,17 +78,13 @@ async function handleRegister(e) {
         email: document.getElementById('register-email').value.trim(),
         role: 'user'
     };
-
     if (!formData.username || !formData.password || !formData.fullName) {
         showAlert('ผิดพลาด', 'กรุณากรอกข้อมูลให้ครบถ้วน');
         return;
     }
-
     toggleLoader('register-submit-button', true);
-
     try {
         const result = await apiCall('POST', 'registerUser', formData);
-        
         if (result.status === 'success') {
             showAlert('สำเร็จ', 'ลงทะเบียนสำเร็จ! กรุณาเข้าสู่ระบบ');
             document.getElementById('register-modal').style.display = 'none';
@@ -137,7 +108,6 @@ function initializeUserSession(user) {
 function updateUIForUser(user) {
     document.getElementById('user-fullname').textContent = user.fullName || 'N/A';
     document.getElementById('user-position').textContent = user.position || 'N/A';
-
     const isAdmin = user.role === 'admin';
     document.getElementById('admin-nav-command').classList.toggle('hidden', !isAdmin);
     document.getElementById('admin-nav-users').classList.toggle('hidden', !isAdmin);
@@ -148,56 +118,20 @@ function showMainApp() {
     document.getElementById('main-app').classList.remove('hidden');
 }
 
-// ✅ ฟังก์ชันแสดงหน้าล็อกอิน
 function showLoginScreen() {
-    console.log("🔐 Showing login screen");
-    
     resetEditPage();
-    
-    document.querySelectorAll('.page-view').forEach(page => {
-        page.classList.add('hidden');
-    });
-    
-    document.getElementById('edit-page').classList.add('hidden');
+    document.querySelectorAll('.page-view').forEach(page => page.classList.add('hidden'));
     document.getElementById('main-app').classList.add('hidden');
     document.getElementById('login-screen').classList.remove('hidden');
-    
-    document.querySelectorAll('.nav-button').forEach(btn => {
-        btn.classList.remove('active');
-    });
-    
+    document.querySelectorAll('.nav-button').forEach(btn => btn.classList.remove('active'));
     document.getElementById('user-nav-dashboard').classList.add('active');
-    
     sessionStorage.removeItem('currentUser');
-    sessionStorage.removeItem('currentEditRequestId');
-    window.currentUser = null;
-    
-    document.getElementById('login-form').reset();
-    document.getElementById('login-error').classList.add('hidden');
-    
-    console.log("✅ Login screen ready");
-}
-
-// --- PROFILE FUNCTIONS ---
-
-function loadProfileData() {
-    const user = getCurrentUser();
-    if (!user) return;
-
-    document.getElementById('profile-fullname').value = user.fullName || '';
-    document.getElementById('profile-position').value = user.position || '';
-    document.getElementById('profile-department').value = user.department || '';
-    document.getElementById('profile-email').value = user.email || '';
-    document.getElementById('profile-username').value = user.username || '';
-    document.getElementById('profile-loginname').value = user.loginName || '';
 }
 
 async function handleProfileUpdate(e) {
     e.preventDefault();
-    
     const user = getCurrentUser();
     if (!user) return;
-
     const formData = {
         username: user.username,
         loginName: document.getElementById('profile-loginname').value.trim(),
@@ -206,17 +140,13 @@ async function handleProfileUpdate(e) {
         department: document.getElementById('profile-department').value,
         email: document.getElementById('profile-email').value
     };
-
     toggleLoader('profile-submit-button', true);
-
     try {
         const result = await apiCall('POST', 'updateUserProfile', formData);
-        
         if (result.status === 'success') {
             const updatedUser = { ...user, ...formData };
             sessionStorage.setItem('currentUser', JSON.stringify(updatedUser));
             updateUIForUser(updatedUser);
-            
             showAlert('สำเร็จ', 'อัปเดตข้อมูลส่วนตัวสำเร็จ');
         } else {
             showAlert('ผิดพลาด', result.message);
@@ -230,26 +160,16 @@ async function handleProfileUpdate(e) {
 
 async function handlePasswordUpdate(e) {
     e.preventDefault();
-    
     const user = getCurrentUser();
     if (!user) return;
-
     const formData = {
         username: user.username,
         oldPassword: document.getElementById('current-password').value,
         newPassword: document.getElementById('new-password').value
     };
-
-    if (!formData.oldPassword || !formData.newPassword) {
-        showAlert('ผิดพลาด', 'กรุณากรอกรหัสผ่านปัจจุบันและรหัสผ่านใหม่');
-        return;
-    }
-
     toggleLoader('password-submit-button', true);
-
     try {
         const result = await apiCall('POST', 'updatePassword', formData);
-        
         if (result.status === 'success') {
             showAlert('สำเร็จ', 'เปลี่ยนรหัสผ่านสำเร็จ');
             document.getElementById('password-form').reset();
@@ -261,13 +181,4 @@ async function handlePasswordUpdate(e) {
     } finally {
         toggleLoader('password-submit-button', false);
     }
-}
-
-function togglePasswordVisibility() {
-    const showPassword = document.getElementById('show-password-toggle').checked;
-    const currentPassword = document.getElementById('current-password');
-    const newPassword = document.getElementById('new-password');
-    
-    currentPassword.type = showPassword ? 'text' : 'password';
-    newPassword.type = showPassword ? 'text' : 'password';
 }
