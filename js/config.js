@@ -1,10 +1,7 @@
-// ปิดการทำงานของ console ทั้งหมด
-console.log = function() {};
-console.warn = function() {};
-console.error = function() {};
-console.info = function() {};
+// ปิดการทำงานของ console (เปิดไว้ตอน dev ได้)
+// console.log = function() {};
 
-// ใช้ URL ของ Google Apps Script
+// ใส่ URL ของ Google Apps Script ที่ Deploy ล่าสุด
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzP-HCQGbA3Xi2Ms4DXTGy8k17Bv72pFohnJ0txAePjjXybe6pK42mSaYOfTQ5V9Q6mDA/exec";
 
 // Global State
@@ -14,7 +11,7 @@ let userMemosCache = [];
 let allUsersCache = [];
 window.requestsChartInstance = null;
 window.statusChartInstance = null;
-let currentPublicWeeklyData = []; // เพิ่มตัวแปร global สำหรับ public weekly
+let currentPublicWeeklyData = [];
 
 let specialPositionMap = {
     'รองผู้อำนวยการกลุ่มบริหารทั่วไป':'นางวชิรินทรา พัฒนกุลเดช',
@@ -35,7 +32,7 @@ let specialPositionMap = {
     'หัวหน้ากลุ่มสาระการเรียนรู้ศิลปะ': 'นางสาวปิยลักษณ์ ขันทา',
     'หัวหน้ากลุ่มสาระการเรียนรู้การงานอาชีพ': 'นายสุชาติ สินทร',
     'หัวหน้างานแนะแนว':'นายเริงศักดิ์ จันทร์นวล',
-    '.....................................':'.....................................'
+    '........................................':'........................................'
 };
 
 const statusTranslations = {
