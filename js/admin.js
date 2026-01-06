@@ -1,10 +1,68 @@
 async function fetchAllRequestsForCommand() {
+    if (!checkAdminAccess()) { showAlert('ผิดพลาด', 'คุณไม่มีสิทธิ์เข้าถึงหน้านี้'); return; }
     try {
-        if (!checkAdminAccess()) { showAlert('ผิดพลาด', 'คุณไม่มีสิทธิ์เข้าถึงหน้านี้'); return; }
         const result = await apiCall('GET', 'getAllRequests');
         if (result.status === 'success') renderAdminRequestsList(result.data);
     } catch (error) { showAlert('ผิดพลาด', 'ไม่สามารถโหลดข้อมูลคำขอได้'); }
 }
+
+function renderAdminRequestsList(requests) {
+    const container = document.getElementById('admin-requests-list');
+    if (!requests || requests.length === 0) { 
+        container.innerHTML = '<p class="text-center text-gray-500">ไม่พบคำขอไปราชการ</p>'; 
+        return;
+    }
+    
+    requests.sort((a, b) => new Date(b.docDate || b.timestamp) - new Date(a.docDate || a.timestamp));
+
+    container.innerHTML = requests.map(req => {
+        const attendeeCount = req.attendeeCount || 0;
+        const totalPeople = attendeeCount + 1;
+        let peopleCategory = totalPeople === 1 ? "คำสั่งเดี่ยว (1 คน)" : (totalPeople <= 5 ? "คำสั่งกลุ่มเล็ก (2-5 คน)" : "คำสั่งกลุ่มใหญ่ (6 คนขึ้นไป)");
+        
+        return `
+        <div class="border rounded-lg p-4 bg-white shadow-sm hover:shadow-md transition">
+            <div class="flex justify-between items-start">
+                <div class="flex-1">
+                    <h4 class="font-bold text-indigo-700 flex items-center gap-2">
+                        ${req.id} 
+                        <span class="text-xs font-normal text-gray-500 bg-gray-100 px-2 py-0.5 rounded">โดย: ${req.requesterName}</span>
+                    </h4>
+                    <p class="text-sm text-gray-800 font-medium mt-1">${req.purpose}</p>
+                    <p class="text-sm text-gray-500">📍 ${req.location} | 📅 ${formatDisplayDate(req.startDate)} - ${formatDisplayDate(req.endDate)}</p>
+                    <p class="text-sm text-gray-700 mt-1">ผู้ร่วมเดินทาง: ${attendeeCount} คน (${peopleCategory})</p>
+                    <p class="text-sm">สถานะคำขอ: <span class="font-medium">${translateStatus(req.status)}</span></p>
+                    <p class="text-sm">สถานะคำสั่ง: <span class="font-medium ${getStatusColor(req.commandStatus)}">${req.commandStatus || 'รอดำเนินการ'}</span></p>
+                </div>
+                <div class="flex flex-col gap-2 ml-4">
+                    <div class="flex gap-1">
+                        ${req.pdfUrl ? `<a href="${req.pdfUrl}" target="_blank" class="btn btn-success btn-sm text-xs">📄 PDF</a>` : ''}
+                        ${req.docUrl ? `<a href="${req.docUrl}" target="_blank" class="btn bg-blue-600 hover:bg-blue-700 text-white btn-sm text-xs">📝 Word</a>` : ''}
+                    </div>
+                    
+                    <div class="flex gap-1">
+                        <button onclick="openEditPage('${req.id}')" class="btn bg-yellow-500 hover:bg-yellow-600 text-white btn-sm text-xs">✏️ แก้ไข</button>
+                        <button onclick="handleDeleteRequest('${req.id}')" class="btn btn-danger btn-sm text-xs">🗑️ ลบ</button>
+                    </div>
+
+                    <div class="border-t pt-2 mt-1 flex flex-col gap-1">
+                        ${req.commandPdfUrl ? 
+                            `<a href="${req.commandPdfUrl}" target="_blank" class="btn bg-blue-500 text-white btn-sm text-xs">ดูคำสั่งเดิม</a>` : 
+                            `<button onclick="openAdminGenerateCommand('${req.id}')" class="btn bg-green-500 text-white btn-sm text-xs">ออกคำสั่ง</button>`
+                        }
+                        ${!req.dispatchBookPdfUrl ? 
+                            `<button onclick="openDispatchModal('${req.id}')" class="btn bg-orange-500 text-white btn-sm text-xs">ออกหนังสือส่ง</button>` : 
+                            `<a href="${req.dispatchBookPdfUrl}" target="_blank" class="btn bg-purple-500 text-white btn-sm text-xs">ดูหนังสือส่ง</a>`
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// ... (ฟังก์ชันอื่นๆ ของ Admin เช่น fetchAllMemos, renderAdminMemosList, fetchAllUsers ใช้โครงสร้างเดิม)
+
 
 async function fetchAllMemos() {
     try {
