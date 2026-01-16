@@ -24,6 +24,15 @@ async function handleRequestAction(e) {
         document.getElementById('memo-modal-request-id').value = requestId;
         document.getElementById('send-memo-modal').style.display = 'flex';
     }
+    // เพิ่มต่อจากเงื่อนไขเดิมใน handleRequestAction
+    else if (action === 'generate-pdf-memo') {
+        const req = allRequestsCache.find(r => r.id === requestId);
+        if (req) generatePDFViaRender(req, 'memo');
+    } 
+    else if (action === 'generate-pdf-command') {
+        const req = allRequestsCache.find(r => r.id === requestId);
+        if (req) generatePDFViaRender(req, 'command');
+    }
 }
 
 async function handleDeleteRequest(requestId) {
