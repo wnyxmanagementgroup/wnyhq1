@@ -868,3 +868,56 @@ function openPublicAttendeeModal(index) {
     listBody.innerHTML = html;
     document.getElementById('public-attendee-modal').style.display = 'flex';
 }
+// --- ฟังก์ชันสั่งสร้าง PDF ผ่าน Render (เพิ่มท้ายไฟล์ requests.js) ---
+async function generatePDFViaRender(requestData, docType = 'memo') {
+    try {
+        // แสดง Loading ด้วย SweetAlert2
+        Swal.fire({
+            title: 'กำลังสร้างเอกสาร...',
+            html: 'ระบบกำลังประมวลผลฟอนต์และไฟล์ PDF<br><b>(อาจใช้เวลา 1-2 นาทีสำหรับการใช้งานครั้งแรก)</b>',
+            allowOutsideClick: false,
+            didOpen: () => { Swal.showLoading(); }
+        });
+
+        // เตรียมข้อมูลส่งไปที่ Python (Render)
+        const payload = {
+            doc_type: docType,
+            requester_name: requestData.requesterName || requestData.fullName,
+            requester_position: requestData.position,
+            purpose: requestData.purpose,
+            location: requestData.location,
+            start_date: requestData.startDate,
+            end_date: requestData.endDate,
+            duration: requestData.duration,
+            attendees: requestData.attendees || [], 
+            folderId: "1pGiVOigsZZqb-jOix2izMMl0AwzfS27Z", 
+            requestId: requestData.id || "REQ-" + Date.now(),
+            year_th: (new Date().getFullYear() + 543).toString(),
+            month_th: new Date().toLocaleDateString('th-TH', { month: 'long' })
+        };
+
+        const response = await fetch(RENDER_PDF_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) throw new Error('การเชื่อมต่อกับ Render ล้มเหลว');
+
+        const result = await response.json();
+        if (result.status === "success") {
+            Swal.fire({
+                icon: 'success',
+                title: 'สร้างไฟล์สำเร็จ',
+                text: 'กำลังเปิดไฟล์ PDF...',
+                timer: 2000
+            });
+            window.open(result.pdfUrl, '_blank');
+        } else {
+            throw new Error(result.message);
+        }
+    } catch (error) {
+        console.error("Render Error:", error);
+        Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถสร้าง PDF ได้: ' + error.message, 'error');
+    }
+}
