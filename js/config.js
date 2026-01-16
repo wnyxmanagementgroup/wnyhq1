@@ -6,7 +6,7 @@ console.info = function() {};
 
 // ใช้ URL ของ Google Apps Script
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzP-HCQGbA3Xi2Ms4DXTGy8k17Bv72pFohnJ0txAePjjXybe6pK42mSaYOfTQ5V9Q6mDA/exec";
-
+const RENDER_PDF_URL = "https://wangnamyen-pdf-service.onrender.com";
 // Global State
 let allRequestsCache = [];
 let allMemosCache = [];
