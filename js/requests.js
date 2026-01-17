@@ -616,3 +616,81 @@ function setupEditPageEventListeners() {
     // ปุ่มกลับหน้า Dashboard
     document.getElementById('back-to-dashboard').onclick = () => switchPage('dashboard-page');
 }
+// --- [ADD-ON] ฟังก์ชันสำหรับหน้า Public Dashboard (แสดงรายการประจำสัปดาห์) ---
+
+async function loadPublicWeeklyData() {
+    const container = document.getElementById('public-weekly-list');
+    if (!container) return; // ถ้าไม่อยู่หน้า Login ให้ข้ามไป
+
+    try {
+        // เรียก API ดึงข้อมูลสาธารณะ
+        const result = await apiCall('GET', 'getPublicWeeklyData');
+        
+        if (result.status === 'success' && result.data) {
+             renderPublicWeeklyList(result.data);
+        } else {
+             // กรณีไม่มีข้อมูล หรือ API ไม่ตอบกลับตามคาด
+             container.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-gray-500">ไม่พบรายการในสัปดาห์นี้</td></tr>';
+             document.getElementById('current-week-display').textContent = 'ข้อมูลปัจจุบัน';
+        }
+    } catch (error) {
+        console.error('Error loading public data:', error);
+        // กรณีเชื่อมต่อไม่ได้ ให้แสดงข้อความแจ้งเตือนในตาราง
+        container.innerHTML = `
+            <tr>
+                <td colspan="4" class="text-center py-6 text-red-500">
+                    <p>ไม่สามารถโหลดข้อมูลได้</p>
+                    <button onclick="loadPublicWeeklyData()" class="mt-2 text-sm text-blue-500 underline">ลองใหม่อีกครั้ง</button>
+                </td>
+            </tr>
+        `;
+    }
+}
+
+function renderPublicWeeklyList(data) {
+    const container = document.getElementById('public-weekly-list');
+    const weekDisplay = document.getElementById('current-week-display');
+    
+    // แสดงช่วงวันที่ของสัปดาห์ (ถ้า API ส่งมา)
+    if(data.weekRange && weekDisplay) {
+        weekDisplay.textContent = data.weekRange;
+    }
+
+    if (!data.requests || data.requests.length === 0) {
+        container.innerHTML = '<tr><td colspan="4" class="text-center py-8 text-gray-400">สัปดาห์นี้ไม่มีรายการไปราชการ</td></tr>';
+        return;
+    }
+
+    // สร้างแถวในตาราง
+    container.innerHTML = data.requests.map(req => {
+        // ตรวจสอบว่ามีไฟล์คำสั่งหรือไม่
+        const commandBtn = req.commandUrl 
+            ? `<a href="${req.commandUrl}" target="_blank" class="inline-flex items-center gap-1 bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold hover:bg-green-200 transition shadow-sm border border-green-200">
+                 📄 ดูคำสั่ง
+               </a>` 
+            : `<span class="text-gray-300 text-xs">-</span>`;
+
+        return `
+        <tr class="hover:bg-blue-50/50 transition border-b border-gray-100 last:border-0 group">
+            <td class="px-6 py-4 align-top">
+                <div class="font-bold text-indigo-700 bg-indigo-50 inline-block px-2 py-0.5 rounded text-sm">${formatDisplayDate(req.startDate)}</div>
+                ${req.endDate && req.endDate !== req.startDate ? `<div class="text-xs text-gray-500 mt-1">ถึง ${formatDisplayDate(req.endDate)}</div>` : ''}
+            </td>
+            <td class="px-6 py-4 align-top">
+                <div class="font-bold text-gray-800">${req.requesterName}</div>
+                <div class="text-xs text-gray-500 mt-0.5">${req.position || '-'}</div>
+            </td>
+            <td class="px-6 py-4 align-top">
+                <div class="text-sm text-gray-800 font-medium mb-1">${req.purpose}</div>
+                <div class="text-xs text-gray-500 flex items-center gap-1">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                    ${req.location}
+                </div>
+            </td>
+            <td class="px-6 py-4 align-top text-center">
+                 ${commandBtn}
+            </td>
+        </tr>
+        `;
+    }).join('');
+}
