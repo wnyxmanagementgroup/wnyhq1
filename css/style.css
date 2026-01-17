@@ -128,33 +128,34 @@ legend {
 
 /* --- Charts & Lists (แก้ไขแล้ว) --- */
 
-/* 1. คอนเทนเนอร์: ล็อกความสูงให้แน่นอน (Fixed Height) */
+/* --- [ แก้ไข ] สไตล์ของกล่องกราฟ --- */
 .chart-container {
-    position: relative; 
-    border-radius: 0.75rem; 
-    padding: 1rem; 
+    position: relative;
+    background-color: rgba(255, 255, 255, 0.8) !important;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 4px 12px 0 rgba(0, 0, 0, 0.05) !important;
+    border-radius: 0.75rem;
+    padding: 1.5rem;
     
-    /* แก้จาก min-height เป็น height เพื่อล็อกขนาด */
+    /* แก้ไขจุดนี้: เปลี่ยนจาก min-height เป็น height ที่แน่นอน */
     height: 400px; 
-    
-    background-color: white; 
     width: 100%;
-    overflow: hidden; /* ป้องกันส่วนเกินล้นออกมา */
+    overflow: hidden; /* ป้องกันกราฟล้น */
 }
 
-/* 2. ตัวกราฟ: บังคับให้เต็มพื้นที่กล่องแม่ 100% */
-.chart-container canvas { 
-    width: 100% !important; 
-    height: 100% !important; /* บังคับเต็มความสูง 400px */
-    display: block; 
-    object-fit: contain;
+/* ปรับแต่ง Canvas */
+.chart-container canvas {
+    width: 100% !important;
+    height: 100% !important;
+    display: block;
 }
 
-/* 3. การแสดงผลบนมือถือ: ปรับความสูงให้เหมาะสม */
-@media (max-width: 768px) { 
+/* เพิ่ม: ปรับขนาดกราฟเมื่ออยู่บนมือถือ */
+@media (max-width: 768px) {
     .chart-container {
-        height: 300px; /* ลดความสูงลงในมือถือ */
-        padding: 0.5rem;
+        height: 300px; /* ลดความสูงบนมือถือ */
     }
 }
 
