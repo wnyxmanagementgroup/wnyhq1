@@ -902,3 +902,72 @@ function toggleExpenseOptions() {
     if (details) details.classList.toggle('hidden', !isPartial);
     if (total) total.classList.toggle('hidden', !isPartial);
 }
+// --- [ADD-ON] ฟังก์ชันจัดการ Modal ส่งบันทึกข้อความ (Upload Memo) ---
+
+async function handleMemoSubmitFromModal(e) {
+    e.preventDefault();
+
+    // 1. ดึงค่าจากฟอร์มใน Modal
+    const requestId = document.getElementById('memo-modal-request-id').value;
+    const memoType = document.querySelector('input[name="modal_memo_type"]:checked')?.value;
+    const fileInput = document.getElementById('modal-memo-file');
+    const file = fileInput?.files[0];
+
+    // 2. ตรวจสอบความถูกต้อง
+    if (!requestId) {
+        Swal.fire('ผิดพลาด', 'ไม่พบรหัสคำขอ (Request ID)', 'error');
+        return;
+    }
+
+    // กรณีเลือก "ไม่เบิกค่าใช้จ่าย" (non_reimburse) ปกติต้องบังคับให้อัปโหลดไฟล์
+    // แต่ถ้าเลือก "เบิกค่าใช้จ่าย" (reimburse) อาจจะไม่ต้องแนบไฟล์ (ส่งเรื่องเปล่าๆ ไป)
+    const isReimburse = memoType === 'reimburse';
+    if (!isReimburse && !file) {
+        Swal.fire('แจ้งเตือน', 'กรุณาแนบไฟล์บันทึกข้อความที่ลงนามแล้ว', 'warning');
+        return;
+    }
+
+    // 3. เริ่มกระบวนการส่งข้อมูล
+    toggleLoader('send-memo-submit-button', true);
+
+    try {
+        let fileObj = null;
+        if (file) {
+            // ใช้ฟังก์ชันแปลงไฟล์เป็น Base64 จาก utils.js
+            fileObj = await fileToObject(file);
+        }
+
+        // ส่ง API ไปที่ GAS
+        // ชื่อ action: 'submitSignedMemo' (หรือชื่อที่ตรงกับ backend ของคุณ)
+        const result = await apiCall('POST', 'submitSignedMemo', {
+            requestId: requestId,
+            memoType: memoType,
+            file: fileObj,
+            // อัปเดตสถานะเป็น "รอตรวจสอบ" ทันทีที่ส่ง
+            status: 'รอตรวจสอบและออกคำสั่งไปราชการ'
+        });
+
+        if (result.status === 'success') {
+            Swal.fire({
+                icon: 'success',
+                title: 'ส่งเอกสารสำเร็จ',
+                text: 'ระบบได้บันทึกไฟล์เรียบร้อยแล้ว'
+            });
+
+            // ปิด Modal
+            document.getElementById('send-memo-modal').style.display = 'none';
+            document.getElementById('send-memo-form').reset();
+
+            // รีเฟรชตารางงาน
+            if (typeof fetchUserRequests === 'function') fetchUserRequests();
+        } else {
+            throw new Error(result.message);
+        }
+
+    } catch (error) {
+        console.error('Memo Submit Error:', error);
+        Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถส่งเอกสารได้: ' + error.message, 'error');
+    } finally {
+        toggleLoader('send-memo-submit-button', false);
+    }
+}
