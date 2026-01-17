@@ -757,3 +757,70 @@ async function handleAdminGenerateCommand() {
         toggleLoader('admin-generate-command-button', false);
     }
 }
+// ==========================================
+// 🛠️ ฟังก์ชันตรวจสอบสุขภาพระบบ (System Diagnosis)
+// ==========================================
+async function runSystemDiagnosis() {
+    console.clear();
+    console.log("%c 🚀 เริ่มต้นการตรวจสอบระบบ...", "color: blue; font-weight: bold; font-size: 14px;");
+    
+    let logs = [];
+    const log = (msg, status) => {
+        const icon = status === 'ok' ? '✅' : (status === 'warn' ? '⚠️' : '❌');
+        console.log(`${icon} ${msg}`);
+        logs.push(`${icon} ${msg}`);
+    };
+
+    // 1. ตรวจสอบ Firestore (ต้นเหตุปัญหาปัจจุบัน)
+    log("1. กำลังทดสอบการเชื่อมต่อ Firebase...", "warn");
+    try {
+        if (!db) throw new Error("Firebase SDK ไม่ถูกโหลด");
+        
+        // ลองเขียนข้อมูลจำลอง
+        const testRef = await db.collection('_diagnostics').add({
+            test: 'connection_check',
+            timestamp: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        log(`Firestore Write: สำเร็จ! (ID: ${testRef.id})`, "ok");
+        
+        // ลองลบทิ้ง (Cleanup)
+        await testRef.delete();
+        log(`Firestore Delete: สำเร็จ!`, "ok");
+        
+    } catch (e) {
+        log(`Firestore Error: ${e.code} - ${e.message}`, "error");
+        log(`คำแนะนำ: กรุณาไปที่ Firebase Console > Firestore > Rules แล้วเปลี่ยน allow read, write เป็น true`, "warn");
+    }
+
+    // 2. ตรวจสอบ Google Apps Script (Backend)
+    log("2. กำลังทดสอบ Google Apps Script...", "warn");
+    try {
+        const res = await apiCall('GET', 'getAllUsers'); // ลองดึงข้อมูลสั้นๆ
+        if (res.status === 'success') {
+            log(`GAS Connection: สำเร็จ! (ดึงข้อมูลผู้ใช้ได้)`, "ok");
+        } else {
+            log(`GAS Error: ${res.message}`, "error");
+        }
+    } catch (e) {
+        log(`GAS Network Error: ${e.message}`, "error");
+    }
+
+    // 3. ตรวจสอบ Cloud Run (PDF Engine)
+    log("3. กำลังทดสอบระบบสร้าง PDF (Cloud Run)...", "warn");
+    const cloudRunUrl = "https://pdf-engine-660310608742.asia-southeast1.run.app";
+    try {
+        // ยิงไปเช็คว่า Server ตื่นไหม
+        const start = Date.now();
+        await fetch(cloudRunUrl, { method: 'GET', mode: 'no-cors' }); 
+        const time = Date.now() - start;
+        log(`Cloud Run Ping: สำเร็จ! (ตอบสนองใน ${time}ms)`, "ok");
+    } catch (e) {
+        log(`Cloud Run Error: ไม่สามารถติดต่อ Server ได้`, "error");
+    }
+
+    // 4. สรุปผล
+    alert("ผลการตรวจสอบระบบ:\n\n" + logs.join("\n"));
+}
+
+// ทำให้เรียกใช้ผ่าน Console ได้ง่ายๆ
+window.checkSystem = runSystemDiagnosis;
