@@ -694,3 +694,211 @@ function renderPublicWeeklyList(data) {
         `;
     }).join('');
 }
+// --- [ADD-ON] ฟังก์ชันสำหรับหน้าแบบฟอร์มคำขอใหม่ (Form Page) ---
+
+// 1. ฟังก์ชันจัดการการส่งฟอร์ม (Create New Request)
+async function handleRequestFormSubmit(e) {
+    e.preventDefault();
+
+    // ตรวจสอบว่ากำลังกดปุ่มซ้ำหรือไม่
+    const submitBtn = document.getElementById('submit-request-button');
+    if (submitBtn.disabled) return;
+
+    // รวบรวมข้อมูลจากฟอร์ม
+    const formData = {
+        docDate: document.getElementById('form-doc-date').value,
+        requesterName: document.getElementById('form-requester-name').value,
+        requesterPosition: document.getElementById('form-requester-position').value,
+        location: document.getElementById('form-location').value,
+        purpose: document.getElementById('form-purpose').value,
+        startDate: document.getElementById('form-start-date').value,
+        endDate: document.getElementById('form-end-date').value,
+        
+        // ข้อมูลผู้ร่วมเดินทาง
+        attendees: getAttendeesFromForm('form-attendees-list'),
+        
+        // ข้อมูลผู้ลงนาม
+        departmentHead: document.getElementById('form-department').value,
+        headName: document.getElementById('form-head-name').value,
+        
+        // สถานะเริ่มต้น
+        status: 'Submitted'
+    };
+
+    // จัดการข้อมูลค่าใช้จ่าย
+    const expenseOption = document.querySelector('input[name="expense_option"]:checked').value;
+    formData.expenseOption = expenseOption;
+    formData.expenseItems = [];
+    formData.totalExpense = 0;
+
+    if (expenseOption === 'partial') {
+        document.querySelectorAll('input[name="expense_item"]:checked').forEach(cb => {
+            if (cb.id === 'expense_other_check') {
+                const otherText = document.getElementById('expense_other_text').value;
+                if (otherText) formData.expenseItems.push(otherText);
+            } else {
+                formData.expenseItems.push(cb.value);
+            }
+        });
+        formData.totalExpense = document.getElementById('form-total-expense').value || 0;
+    }
+
+    // จัดการข้อมูลพาหนะ
+    const vehicleCheckboxes = document.querySelectorAll('input[name="vehicle_option"]:checked');
+    if (vehicleCheckboxes.length > 0) {
+        // เลือกตัวแรกที่ติ๊ก (ปกติควรเลือกได้อย่างเดียว)
+        const vOption = vehicleCheckboxes[0].value;
+        formData.vehicleOption = vOption;
+        
+        if (vOption === 'private') {
+            formData.licensePlate = document.getElementById('form-license-plate').value;
+        } else if (vOption === 'public') {
+            // ใช้ field licensePlate เก็บรายละเอียดพาหนะอื่นๆ ชั่วคราว
+            formData.licensePlate = document.getElementById('form-public-vehicle-details').value;
+        } else {
+            formData.licensePlate = '';
+        }
+    } else {
+        formData.vehicleOption = 'gov'; // ค่าเริ่มต้น
+    }
+
+    // ตรวจสอบข้อมูลจำเป็น
+    if (!formData.docDate || !formData.requesterName || !formData.purpose) {
+        Swal.fire('ข้อมูลไม่ครบถ้วน', 'กรุณากรอกข้อมูลที่มีเครื่องหมายดอกจันให้ครบ', 'warning');
+        return;
+    }
+
+    // เริ่มกระบวนการบันทึก
+    toggleLoader('submit-request-button', true);
+
+    try {
+        // ส่งข้อมูลไปสร้างในฐานข้อมูล (GAS/Firebase)
+        const result = await apiCall('POST', 'submitRequest', formData);
+
+        if (result.status === 'success') {
+            // สำเร็จ -> ถามว่าจะออกเอกสารเลยไหม
+            const confirmPdf = await Swal.fire({
+                title: 'บันทึกสำเร็จ!',
+                text: 'คุณต้องการออกเอกสาร PDF เลยหรือไม่?',
+                icon: 'success',
+                showCancelButton: true,
+                confirmButtonText: 'ออกเอกสาร PDF',
+                cancelButtonText: 'กลับไปหน้าหลัก',
+                confirmButtonColor: '#10b981'
+            });
+
+            if (confirmPdf.isConfirmed) {
+                // ถ้าจะออก PDF เลย ให้ใช้ ID ที่เพิ่งได้มา เรียกฟังก์ชันทำ PDF
+                // ต้องเติม ID ใส่ object ก่อนส่งไป
+                formData.id = result.requestId; 
+                await submitToSheetAndGeneratePDF(formData);
+            } else {
+                // ถ้าไม่ทำ PDF ให้กลับไปหน้า Dashboard
+                await switchPage('dashboard-page');
+                if (typeof fetchUserRequests === 'function') fetchUserRequests();
+            }
+            
+            // ล้างฟอร์ม
+            resetRequestForm();
+            
+        } else {
+            throw new Error(result.message);
+        }
+
+    } catch (error) {
+        console.error('Submit Error:', error);
+        Swal.fire('บันทึกไม่สำเร็จ', error.message, 'error');
+    } finally {
+        toggleLoader('submit-request-button', false);
+    }
+}
+
+// 2. ฟังก์ชันเพิ่มช่องกรอกผู้ร่วมเดินทาง
+function addAttendeeField(name = '', position = 'ครู') {
+    const list = document.getElementById('form-attendees-list');
+    if (!list) return;
+
+    const div = document.createElement('div');
+    div.className = 'grid grid-cols-1 md:grid-cols-3 gap-2 items-center mb-2 attendee-row fade-in';
+    div.innerHTML = `
+        <input type="text" class="form-input attendee-name md:col-span-1" placeholder="ชื่อ-นามสกุล" value="${name}" required>
+        <div class="attendee-position-wrapper md:col-span-1">
+             <input type="text" class="form-input attendee-position-input" placeholder="ตำแหน่ง" value="${position}">
+        </div>
+        <button type="button" class="btn btn-danger btn-sm text-xs px-2 py-1" onclick="this.parentElement.remove()">ลบ</button>
+    `;
+    list.appendChild(div);
+}
+
+// 3. ฟังก์ชันดึงรายชื่อผู้ร่วมเดินทางจากฟอร์ม
+function getAttendeesFromForm(listId) {
+    const attendees = [];
+    document.querySelectorAll(`#${listId} .attendee-row`).forEach(row => {
+        const name = row.querySelector('.attendee-name').value.trim();
+        const position = row.querySelector('.attendee-position-input').value.trim();
+        if (name) {
+            attendees.push({ name, position });
+        }
+    });
+    return attendees;
+}
+
+// 4. ฟังก์ชันรีเซ็ตฟอร์ม (Clear Form)
+function resetRequestForm() {
+    document.getElementById('request-form').reset();
+    document.getElementById('form-attendees-list').innerHTML = '';
+    
+    // ตั้งค่าวันที่ปัจจุบัน
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('form-doc-date').value = today;
+    document.getElementById('form-start-date').value = today;
+    document.getElementById('form-end-date').value = today;
+    
+    // รีเซ็ตการแสดงผลส่วนซ่อนต่างๆ
+    document.getElementById('partial-expense-options').classList.add('hidden');
+    document.getElementById('total-expense-container').classList.add('hidden');
+    document.getElementById('private-vehicle-details').classList.add('hidden');
+    document.getElementById('public-vehicle-details').classList.add('hidden');
+}
+
+// 5. ฟังก์ชันเติมข้อมูลผู้ขออัตโนมัติ (Auto Fill)
+function tryAutoFillRequester() {
+    const user = getCurrentUser();
+    if (user) {
+        if (!document.getElementById('form-requester-name').value) {
+            document.getElementById('form-requester-name').value = user.fullName || '';
+        }
+        if (!document.getElementById('form-requester-position').value) {
+            document.getElementById('form-requester-position').value = user.position || '';
+        }
+    }
+}
+
+// 6. ฟังก์ชันจัดการ Checkbox พาหนะ (ให้เลือกได้แค่อย่างเดียว)
+function toggleVehicleDetails(e) {
+    if (e && e.target && e.target.checked) {
+        // ปลดติ๊กอันอื่น
+        document.querySelectorAll('input[name="vehicle_option"]').forEach(cb => {
+            if (cb !== e.target) cb.checked = false;
+        });
+    }
+
+    const isPrivate = document.querySelector('input[name="vehicle_option"][value="private"]').checked;
+    const isPublic = document.querySelector('input[name="vehicle_option"][value="public"]').checked;
+
+    const privateDetails = document.getElementById('private-vehicle-details');
+    const publicDetails = document.getElementById('public-vehicle-details');
+
+    if (privateDetails) privateDetails.classList.toggle('hidden', !isPrivate);
+    if (publicDetails) publicDetails.classList.toggle('hidden', !isPublic);
+}
+
+// 7. ฟังก์ชันจัดการ Radio ค่าใช้จ่าย
+function toggleExpenseOptions() {
+    const isPartial = document.getElementById('expense_partial').checked;
+    const details = document.getElementById('partial-expense-options');
+    const total = document.getElementById('total-expense-container');
+
+    if (details) details.classList.toggle('hidden', !isPartial);
+    if (total) total.classList.toggle('hidden', !isPartial);
+}
