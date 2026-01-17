@@ -191,49 +191,212 @@ async function handleDeleteRequest(requestId) {
 }
 
 // 4. ฟังก์ชันดึงข้อมูล (Hybrid: Firebase -> GAS Fallback) - เก็บไว้ครบถ้วน
-async function fetchUserRequests() {
-    toggleLoader('requests-loader', true);
-    const container = document.getElementById('requests-list');
-    if (container) container.innerHTML = '';
+// --- [UPDATED] ฟังก์ชันโหลดและแสดงผล Dashboard ---
 
+async function fetchUserRequests() {
     try {
         const user = getCurrentUser();
         if (!user) return;
 
-        // 1. ลองดึงจาก Firebase ก่อน
-        let requests = null;
-        if (typeof fetchRequestsHybrid === 'function') {
-            requests = await fetchRequestsHybrid(user);
-        }
+        // Reset UI States
+        document.getElementById('requests-loader').classList.remove('hidden');
+        document.getElementById('requests-list').classList.add('hidden');
+        document.getElementById('no-requests-message').classList.add('hidden'); // ซ่อนไปก่อน
 
-        // 2. ถ้าไม่มีใน Firebase หรือมีปัญหา ให้ดึงจาก GAS (Fallback)
-        if (!requests) {
-            console.log("⚠️ Fallback to GAS for requests...");
-            const result = await apiCall('GET', 'getUserRequests', { username: user.username });
-            if (result.status === 'success') {
-                requests = result.data;
+        let requestsData = [];
+        let memosData = [];
+
+        // 1. ดึงข้อมูล (Hybrid Logic)
+        if (typeof fetchRequestsHybrid === 'function' && typeof USE_FIREBASE !== 'undefined' && USE_FIREBASE) {
+            const firebaseResult = await fetchRequestsHybrid(user);
+            if (firebaseResult !== null) {
+                requestsData = firebaseResult;
+            } else {
+                const res = await apiCall('GET', 'getUserRequests', { username: user.username });
+                if (res.status === 'success') requestsData = res.data;
             }
+        } else {
+            const res = await apiCall('GET', 'getUserRequests', { username: user.username });
+            if (res.status === 'success') requestsData = res.data;
         }
 
-        if (requests) {
-            // เรียงลำดับ: ล่าสุดขึ้นก่อน
-            requests.sort((a, b) => {
-                const dateA = new Date(a.timestamp || a.docDate || 0);
-                const dateB = new Date(b.timestamp || b.docDate || 0);
-                return dateB - dateA; 
+        const memosResult = await apiCall('GET', 'getSentMemos', { username: user.username });
+        if (memosResult.status === 'success') memosData = memosResult.data || [];
+        
+        // 2. กรองเฉพาะของ User (สำคัญมากสำหรับ Dashboard)
+        if (requestsData && requestsData.length > 0) {
+            requestsData = requestsData.filter(req => req.username === user.username);
+            
+            // เรียงลำดับ ล่าสุด -> เก่าสุด
+            requestsData.sort((a, b) => {
+                const dateA = new Date(a.timestamp || a.docDate || 0).getTime();
+                const dateB = new Date(b.timestamp || b.docDate || 0).getTime();
+                return dateB - dateA;
             });
+        }
 
-            allRequestsCache = requests; // เก็บลง Cache
-            renderRequestsList(requests); // แสดงผลรายการ
-            updateNotificationUI(requests); // อัปเดตแจ้งเตือน
+        // 3. เก็บลง Cache และแสดงผล
+        allRequestsCache = requestsData;
+        userMemosCache = memosData;
+        
+        renderRequestsList(allRequestsCache, userMemosCache);
+        
+        if (typeof updateNotifications === 'function') {
+            updateNotifications(allRequestsCache, userMemosCache);
         }
 
     } catch (error) {
-        console.error('Fetch requests error:', error);
-        if(container) container.innerHTML = '<p class="text-center text-red-500 py-4">เกิดข้อผิดพลาดในการโหลดข้อมูล</p>';
+        console.error('Error fetching requests:', error);
+        // กรณี Error ให้แสดงข้อความแจ้งเตือนแทน
+        const container = document.getElementById('requests-list');
+        container.innerHTML = `<div class="text-center py-8 text-red-500">เกิดข้อผิดพลาดในการโหลดข้อมูล<br><button onclick="fetchUserRequests()" class="mt-2 text-blue-500 underline">ลองใหม่</button></div>`;
+        container.classList.remove('hidden');
     } finally {
-        toggleLoader('requests-loader', false);
+        document.getElementById('requests-loader').classList.add('hidden');
     }
+}
+
+function renderRequestsList(requests, memos, searchTerm = '') {
+    const container = document.getElementById('requests-list');
+    const noRequestsMessage = document.getElementById('no-requests-message');
+    
+    // Safety check
+    if (!container || !noRequestsMessage) return;
+
+    // 1. กรณีไม่มีข้อมูลเลย (Empty State ตั้งแต่ต้น)
+    if (!requests || requests.length === 0) {
+        container.innerHTML = '';
+        container.classList.add('hidden');
+        noRequestsMessage.classList.remove('hidden');
+        // ปรับข้อความให้เหมาะสม
+        noRequestsMessage.innerHTML = `
+            <div class="flex flex-col items-center justify-center py-10">
+                <div class="bg-gray-100 p-4 rounded-full mb-3">
+                    <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                </div>
+                <p class="text-gray-500 font-medium">ยังไม่มีรายการคำขอไปราชการ</p>
+                <button onclick="switchPage('form-page')" class="mt-3 text-indigo-600 hover:underline text-sm">สร้างคำขอใหม่</button>
+            </div>
+        `;
+        return;
+    }
+
+    // 2. การค้นหา (Filtering)
+    let filteredRequests = requests;
+    if (searchTerm) {
+        const term = searchTerm.toLowerCase();
+        filteredRequests = requests.filter(req => 
+            (req.purpose && req.purpose.toLowerCase().includes(term)) ||
+            (req.location && req.location.toLowerCase().includes(term)) ||
+            (req.id && req.id.toLowerCase().includes(term))
+        );
+    }
+
+    // 3. กรณีค้นหาแล้วไม่เจอ
+    if (filteredRequests.length === 0) {
+        container.classList.add('hidden');
+        noRequestsMessage.classList.remove('hidden');
+        noRequestsMessage.innerHTML = `<div class="text-center py-8 text-gray-500">ไม่พบข้อมูลที่ตรงกับ "${escapeHtml(searchTerm)}"</div>`;
+        return;
+    }
+
+    // 4. กรณีมีข้อมูล -> แสดงผล
+    noRequestsMessage.classList.add('hidden');
+    container.classList.remove('hidden');
+
+    container.innerHTML = filteredRequests.map(request => {
+        const relatedMemo = memos ? memos.find(memo => memo.refNumber === request.id) : null;
+        
+        // Logic การแสดงผลสถานะ (คงเดิมตามที่คุณมี)
+        let displayRequestStatus = request.status;
+        let displayCommandStatus = request.commandStatus;
+        if (relatedMemo) {
+            displayRequestStatus = relatedMemo.status;
+            displayCommandStatus = relatedMemo.status === 'เสร็จสิ้น/รับไฟล์ไปใช้งาน' ? 'เสร็จสิ้น' : relatedMemo.status;
+        }
+        
+        const isFullyCompleted = displayRequestStatus === 'เสร็จสิ้น/รับไฟล์ไปใช้งาน' || displayRequestStatus === 'เสร็จสิ้น';
+        const hasCompletedFiles = request.completedMemoUrl || request.completedCommandUrl || request.dispatchBookUrl || (relatedMemo && (relatedMemo.completedMemoUrl || relatedMemo.completedCommandUrl));
+
+        // Sanitization
+        const safeId = escapeHtml(request.id || request.requestId || 'รอออกเลข');
+        const safePurpose = escapeHtml(request.purpose || 'ไม่มีวัตถุประสงค์');
+        
+        return `
+            <div class="border rounded-lg p-4 mb-4 bg-white shadow-sm ${isFullyCompleted ? 'border-green-200 bg-green-50/50' : ''} hover:shadow-md transition-all">
+                <div class="flex flex-col sm:flex-row justify-between items-start gap-4">
+                    <div class="flex-1 w-full">
+                        <div class="flex items-center flex-wrap gap-2 mb-2">
+                            <span class="bg-indigo-100 text-indigo-800 text-xs font-bold px-2 py-1 rounded">${safeId}</span>
+                            ${isFullyCompleted ? '<span class="text-green-600 text-xs font-bold flex items-center gap-1">✅ เสร็จสิ้น</span>' : ''}
+                        </div>
+                        <h3 class="font-bold text-gray-800 text-lg leading-snug mb-1">${safePurpose}</h3>
+                        <p class="text-sm text-gray-500 flex items-center gap-1">
+                            📍 ${escapeHtml(request.location)} 
+                            <span class="mx-1">|</span> 
+                            📅 ${formatDisplayDate(request.startDate)}
+                        </p>
+                        
+                        <div class="mt-3 grid grid-cols-2 gap-2 text-sm max-w-md">
+                            <div class="bg-gray-50 p-2 rounded border border-gray-100">
+                                <span class="text-gray-500 text-xs block">สถานะคำขอ</span>
+                                <span class="${getStatusColor(displayRequestStatus)} font-medium">${translateStatus(displayRequestStatus)}</span>
+                            </div>
+                            <div class="bg-gray-50 p-2 rounded border border-gray-100">
+                                <span class="text-gray-500 text-xs block">สถานะคำสั่ง</span>
+                                <span class="${getStatusColor(displayCommandStatus || 'กำลังดำเนินการ')} font-medium">${translateStatus(displayCommandStatus || 'กำลังดำเนินการ')}</span>
+                            </div>
+                        </div>
+
+                        ${hasCompletedFiles ? renderDownloadButtons(request, relatedMemo) : ''}
+                    </div>
+                    
+                    <div class="flex flex-row sm:flex-col gap-2 w-full sm:w-auto mt-2 sm:mt-0">
+                        ${renderActionButtons(request, displayRequestStatus, relatedMemo, isFullyCompleted)}
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// Helper: สร้างปุ่ม Action แยกออกมาเพื่อให้โค้ดอ่านง่าย
+function renderActionButtons(request, status, memo, isCompleted) {
+    const id = request.id || request.requestId;
+    if (isCompleted) {
+        return request.pdfUrl ? `<a href="${request.pdfUrl}" target="_blank" class="btn btn-success btn-sm w-full text-center">📄 ดูคำขอ</a>` : '';
+    }
+    
+    let html = '';
+    // ปุ่มแก้ไข/ลบ
+    html += `
+        <button data-action="edit" data-id="${id}" class="btn bg-gray-100 hover:bg-gray-200 text-gray-700 btn-sm w-full">✏️ แก้ไข</button>
+        <button data-action="delete" data-id="${id}" class="btn text-red-500 hover:bg-red-50 btn-sm w-full border border-red-100">🗑️ ลบ</button>
+    `;
+    
+    // ปุ่มส่งบันทึก (แสดงเมื่อต้องแก้ หรือยังไม่เคยส่ง)
+    if (status === 'นำกลับไปแก้ไข' || !memo) {
+        html += `<button data-action="send-memo" data-id="${id}" class="btn bg-blue-600 hover:bg-blue-700 text-white btn-sm w-full shadow-sm mt-1">📤 ส่งบันทึก</button>`;
+    }
+    
+    return html;
+}
+
+// Helper: ปุ่มดาวน์โหลดไฟล์ที่เสร็จแล้ว
+function renderDownloadButtons(req, memo) {
+    const mUrl = memo?.completedMemoUrl || req.completedMemoUrl;
+    const cUrl = memo?.completedCommandUrl || req.completedCommandUrl;
+    const dUrl = memo?.dispatchBookUrl || req.dispatchBookUrl;
+    
+    if(!mUrl && !cUrl && !dUrl) return '';
+
+    return `
+        <div class="mt-3 flex flex-wrap gap-2">
+            ${mUrl ? `<a href="${mUrl}" target="_blank" class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded hover:bg-green-200 border border-green-200 transition">📄 บันทึกข้อความ</a>` : ''}
+            ${cUrl ? `<a href="${cUrl}" target="_blank" class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200 border border-blue-200 transition">📋 คำสั่ง</a>` : ''}
+            ${dUrl ? `<a href="${dUrl}" target="_blank" class="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded hover:bg-purple-200 border border-purple-200 transition">📦 หนังสือส่ง</a>` : ''}
+        </div>
+    `;
 }
 
 // 5. ฟังก์ชันแสดงผลรายการ (ปรับปรุงปุ่มให้ครบทั้ง Memo และ Command)
