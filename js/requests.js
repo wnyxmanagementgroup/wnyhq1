@@ -1,10 +1,11 @@
 // ==========================================================================
 // FILE: requests.js
-// รายละเอียด: แก้ไขการแสดงเลขที่เอกสาร และ แก้ปัญหา Dashboard ไม่โชว์ข้อมูลล่าสุด
+// VERSION: Full Stable (Fix Dashboard, Save, Edit, Vehicles)
 // ==========================================================================
 
 // --- PART 1: ACTION ROUTER & HANDLING ---
 
+// ตัวจัดการปุ่ม Action ต่างๆ ในตาราง (แก้ไข, ลบ, ส่งบันทึก, ออก PDF)
 async function handleRequestAction(e) {
     const button = e.target.closest('button[data-action]');
     if (!button) return;
@@ -32,46 +33,81 @@ async function handleRequestAction(e) {
         }
 
     } else if (action === 'submit-memo-only') {
+        // ปุ่มลัด: ออกเฉพาะบันทึกข้อความ
         const req = allRequestsCache.find(r => r.id === requestId);
-        if (req && typeof submitToSheetAndGeneratePDF === 'function') {
+        if (req) {
             await submitToSheetAndGeneratePDF(req, 'memo');
+        } else {
+            showAlert('ผิดพลาด', 'ไม่พบข้อมูลในระบบ (Cache Miss)');
         }
 
     } else if (action === 'submit-and-pdf') {
+        // ปุ่มลัด: บันทึกและออกเอกสารอัตโนมัติ
         const req = allRequestsCache.find(r => r.id === requestId);
-        if (req && typeof submitToSheetAndGeneratePDF === 'function') {
+        if (req) {
             await submitToSheetAndGeneratePDF(req); 
+        } else {
+            showAlert('ผิดพลาด', 'ไม่พบข้อมูลในระบบ (Cache Miss)');
         }
     }
 }
 
+// ฟังก์ชันลบคำขอ
 async function handleDeleteRequest(requestId) {
     try {
         const user = getCurrentUser();
         if (!user) { showAlert('ผิดพลาด', 'กรุณาเข้าสู่ระบบใหม่'); return; }
 
-        const confirmed = await showConfirm('ยืนยันการลบ', `คุณแน่ใจหรือไม่ว่าต้องการลบคำขอ ${requestId}?`);
+        const confirmed = await showConfirm(
+            'ยืนยันการลบ', 
+            `คุณแน่ใจหรือไม่ว่าต้องการลบคำขอ ${requestId}? การกระทำนี้ไม่สามารถย้อนกลับได้`
+        );
+
         if (!confirmed) return;
 
-        const result = await apiCall('POST', 'deleteRequest', { requestId: requestId, username: user.username });
+        // 1. ส่งคำสั่งลบไปที่ GAS
+        const result = await apiCall('POST', 'deleteRequest', {
+            requestId: requestId,
+            username: user.username
+        });
 
         if (result.status === 'success') {
-            // ลบจาก Cache ทันทีเพื่อให้ UI อัปเดตไว
+            
+            // 2. ถ้าเปิดใช้ Firebase ให้ลบใน Firebase ด้วย (Hybrid System)
+            if (typeof db !== 'undefined' && typeof USE_FIREBASE !== 'undefined' && USE_FIREBASE) {
+                try {
+                    const query = await db.collection('requests').where('requestId', '==', requestId).get();
+                    if (!query.empty) {
+                        const batch = db.batch();
+                        query.docs.forEach(doc => batch.delete(doc.ref));
+                        await batch.commit();
+                    }
+                } catch (fbError) {
+                    console.warn("⚠️ Failed to delete from Firebase:", fbError);
+                }
+            }
+
+            // 3. อัปเดตหน้าจอทันที (Optimistic UI)
             allRequestsCache = allRequestsCache.filter(r => r.id !== requestId);
             renderRequestsList(allRequestsCache, userMemosCache);
             
             showAlert('สำเร็จ', 'ลบคำขอเรียบร้อยแล้ว');
             
-            // ถ้าอยู่ในหน้า Edit ให้เด้งออก
+            // ถ้าอยู่ในหน้า Edit ของอันที่ลบ ให้เด้งกลับ
             if (!document.getElementById('edit-page').classList.contains('hidden')) {
-                await switchPage('dashboard-page');
+                const currentEditId = sessionStorage.getItem('currentEditRequestId');
+                if (currentEditId === requestId) {
+                    await switchPage('dashboard-page');
+                }
             }
+            
         } else {
             showAlert('ผิดพลาด', result.message || 'ไม่สามารถลบคำขอได้');
         }
+
     } catch (error) {
         console.error('Error deleting request:', error);
-        showAlert('ผิดพลาด', 'เกิดข้อผิดพลาดในการลบคำขอ');
+        showAlert('ผิดพลาด', 'เกิดข้อผิดพลาดในการลบคำขอ: ' + error.message);
     }
 }
 
@@ -82,6 +118,7 @@ async function fetchUserRequests() {
         const user = getCurrentUser();
         if (!user) return;
 
+        // Reset UI States
         const loader = document.getElementById('requests-loader');
         const list = document.getElementById('requests-list');
         const noData = document.getElementById('no-requests-message');
@@ -93,9 +130,28 @@ async function fetchUserRequests() {
         let requestsData = [];
         let memosData = [];
 
-        // 1. ดึงข้อมูล Requests
-        const res = await apiCall('GET', 'getUserRequests', { username: user.username });
-        if (res.status === 'success') requestsData = res.data;
+        // 1. ดึงข้อมูล Requests (Hybrid Logic)
+        // ถ้ามีฟังก์ชัน Firebase ให้ใช้ก่อน เพื่อความเร็ว
+        if (typeof fetchRequestsHybrid === 'function' && typeof USE_FIREBASE !== 'undefined' && USE_FIREBASE) {
+            try {
+                const firebaseResult = await fetchRequestsHybrid(user);
+                if (firebaseResult !== null) {
+                    requestsData = firebaseResult;
+                } else {
+                    // ถ้า Firebase พลาด ให้ดึงจาก GAS
+                    const res = await apiCall('GET', 'getUserRequests', { username: user.username });
+                    if (res.status === 'success') requestsData = res.data;
+                }
+            } catch (e) {
+                console.warn("Hybrid fetch failed, using API:", e);
+                const res = await apiCall('GET', 'getUserRequests', { username: user.username });
+                if (res.status === 'success') requestsData = res.data;
+            }
+        } else {
+            // Standard GAS Call
+            const res = await apiCall('GET', 'getUserRequests', { username: user.username });
+            if (res.status === 'success') requestsData = res.data;
+        }
 
         // 2. ดึงข้อมูล Memos
         const memosResult = await apiCall('GET', 'getSentMemos', { username: user.username });
@@ -104,6 +160,8 @@ async function fetchUserRequests() {
         // 3. กรองและเรียงลำดับ
         if (requestsData && requestsData.length > 0) {
             requestsData = requestsData.filter(req => req.username === user.username);
+            
+            // เรียงจากใหม่ไปเก่า
             requestsData.sort((a, b) => {
                 const dateA = new Date(a.timestamp || a.docDate || 0).getTime();
                 const dateB = new Date(b.timestamp || b.docDate || 0).getTime();
@@ -111,18 +169,21 @@ async function fetchUserRequests() {
             });
         }
 
-        // 4. เก็บลง Cache
+        // 4. เก็บลง Cache และแสดงผล
         allRequestsCache = requestsData;
         userMemosCache = memosData;
         
         renderRequestsList(allRequestsCache, userMemosCache);
-        if (typeof updateNotifications === 'function') updateNotifications(allRequestsCache, userMemosCache);
+        
+        if (typeof updateNotifications === 'function') {
+            updateNotifications(allRequestsCache, userMemosCache);
+        }
 
     } catch (error) {
         console.error('Error fetching requests:', error);
         const list = document.getElementById('requests-list');
         if (list) {
-            list.innerHTML = `<div class="text-center py-8 text-red-500">เกิดข้อผิดพลาดในการโหลดข้อมูล<br><button onclick="fetchUserRequests()" class="mt-2 text-blue-500 underline">ลองใหม่</button></div>`;
+            list.innerHTML = `<div class="text-center py-8 text-red-500">เกิดข้อผิดพลาดในการโหลดข้อมูล<br><small>${error.message}</small><br><button onclick="fetchUserRequests()" class="mt-2 text-blue-500 underline">ลองใหม่</button></div>`;
             list.classList.remove('hidden');
         }
     } finally {
@@ -172,6 +233,7 @@ function renderRequestsList(requests, memos, searchTerm = '') {
         return;
     }
 
+    // 3. แสดงผล
     noRequestsMessage.classList.add('hidden');
     container.classList.remove('hidden');
 
@@ -195,7 +257,7 @@ function renderRequestsList(requests, memos, searchTerm = '') {
         const safePurpose = escapeHtml(request.purpose || 'ไม่มีวัตถุประสงค์');
         
         return `
-            <div class="border rounded-lg p-4 mb-4 bg-white shadow-sm ${isFullyCompleted ? 'border-green-200 bg-green-50/30' : ''} hover:shadow-md transition-all fade-in">
+            <div class="border rounded-lg p-4 mb-4 bg-white shadow-sm ${isFullyCompleted ? 'border-green-200 bg-green-50/30' : ''} hover:shadow-md transition-all">
                 <div class="flex flex-col sm:flex-row justify-between items-start gap-4">
                     <div class="flex-1 w-full">
                         <div class="flex items-center flex-wrap gap-2 mb-2">
@@ -318,22 +380,25 @@ async function handleRequestFormSubmit(e) {
     
     try {
         // 2. ส่งข้อมูล API
-        let result = await apiCall('POST', 'createRequest', formData);
+        let result;
+        if (typeof createRequestHybrid === 'function' && typeof USE_FIREBASE !== 'undefined' && USE_FIREBASE) {
+            result = await createRequestHybrid(formData);
+        } else {
+            result = await apiCall('POST', 'createRequest', formData);
+        }
 
         if (result.status === 'success') {
-            // [FIX 1] ดึงเลขที่เอกสารมาแสดง
             const newId = result.data.id || result.data.requestId;
             const pdfUrl = result.data.pdfUrl;
 
             // แสดงหน้าจอสำเร็จ
             const resDiv = document.getElementById('form-result');
-            const resTitle = document.getElementById('form-result-title');
             const resMsg = document.getElementById('form-result-message');
             const linkBtn = document.getElementById('form-result-link');
 
             if(resDiv) {
                 resDiv.classList.remove('hidden');
-                if(resTitle) resTitle.textContent = "บันทึกข้อมูลสำเร็จ";
+                document.getElementById('form-result-title').textContent = "บันทึกข้อมูลสำเร็จ";
                 // แสดงเลขที่เอกสารชัดเจน
                 if(resMsg) resMsg.innerHTML = `เลขที่บันทึก: <span class="text-indigo-600 font-bold text-xl">${newId}</span><br>ระบบได้สร้างเอกสารเรียบร้อยแล้ว`;
             }
@@ -343,11 +408,9 @@ async function handleRequestFormSubmit(e) {
                     linkBtn.href = pdfUrl;
                     linkBtn.classList.remove('hidden');
                 }
-                // เปิด PDF อัตโนมัติใน Tab ใหม่
                 setTimeout(() => window.open(pdfUrl, '_blank'), 1000);
             }
 
-            // แจ้งเตือนสวยๆ
             if (typeof Swal !== 'undefined') {
                 Swal.fire({
                     icon: 'success',
@@ -358,8 +421,7 @@ async function handleRequestFormSubmit(e) {
                 });
             }
 
-            // [FIX 2] เพิ่มข้อมูลลง Cache ทันที (แก้ปัญหา Dashboard ไม่โชว์ของใหม่)
-            // สร้าง Object จำลองเพื่อให้แสดงผลได้เลยไม่ต้องรอ API
+            // เพิ่มข้อมูลลง Cache ทันที (แก้ปัญหา Dashboard ไม่โชว์ของใหม่)
             const newRequestObj = {
                 ...formData,
                 id: newId,
@@ -368,14 +430,10 @@ async function handleRequestFormSubmit(e) {
                 timestamp: new Date().toISOString(),
                 pdfUrl: pdfUrl
             };
-            
-            // ใส่ไว้บนสุดของรายการ
             allRequestsCache.unshift(newRequestObj);
             
             // รีเซ็ตฟอร์ม
             resetRequestForm();
-            
-            // อัปเดตรายการหน้า Dashboard (ถ้ามีการเรียกใช้)
             renderRequestsList(allRequestsCache, userMemosCache);
 
         } else { 
@@ -389,12 +447,70 @@ async function handleRequestFormSubmit(e) {
     }
 }
 
+// [ADDED BACK] ฟังก์ชันสำหรับบันทึกและสร้าง PDF จากปุ่มลัด
+async function submitToSheetAndGeneratePDF(requestData, type = 'all') {
+    try {
+        const user = getCurrentUser();
+        if (!user) return;
+
+        Swal.fire({
+            title: 'กำลังดำเนินการ...',
+            text: 'ระบบกำลังสร้างเอกสาร กรุณารอสักครู่',
+            allowOutsideClick: false,
+            didOpen: () => { Swal.showLoading(); }
+        });
+
+        // ส่งข้อมูลไป update หรือ create ใหม่
+        // กรณีนี้เราใช้ generateDocumentFromDraft logic แต่ปรับให้รับ parameter
+        const formData = {
+            ...requestData,
+            username: user.username,
+            // ถ้า type เป็น memo อาจจะส่ง flag พิเศษไป
+        };
+
+        // เรียก API
+        let result;
+        // ใช้ updateRequest เป็นหลักเพราะข้อมูลมีอยู่แล้ว
+        result = await apiCall('POST', 'updateRequest', formData);
+
+        if (result.status === 'success') {
+            const pdfUrl = result.data.pdfUrl;
+            
+            Swal.fire({
+                icon: 'success',
+                title: 'เสร็จสิ้น',
+                text: 'เอกสารของคุณพร้อมแล้ว',
+                confirmButtonText: 'เปิดเอกสาร',
+                showCancelButton: true,
+                cancelButtonText: 'ปิด'
+            }).then((res) => {
+                if (res.isConfirmed) {
+                    window.open(pdfUrl, '_blank');
+                }
+            });
+
+            // อัปเดตข้อมูลใน Cache
+            const index = allRequestsCache.findIndex(r => r.id === requestData.id);
+            if(index !== -1) {
+                allRequestsCache[index].pdfUrl = pdfUrl;
+                renderRequestsList(allRequestsCache, userMemosCache);
+            }
+
+        } else {
+            throw new Error(result.message);
+        }
+
+    } catch (error) {
+        console.error(error);
+        Swal.fire('เกิดข้อผิดพลาด', error.message, 'error');
+    }
+}
+
 function resetRequestForm() {
     const form = document.getElementById('request-form');
     if (form) form.reset();
     document.getElementById('form-attendees-list').innerHTML = '';
     
-    // ตั้งค่าวันที่
     const today = new Date().toISOString().split('T')[0];
     ['form-doc-date', 'form-start-date', 'form-end-date'].forEach(id => {
         const el = document.getElementById(id);
