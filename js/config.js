@@ -12,12 +12,12 @@ if (!IS_DEBUG) {
 
 // 2. Firebase Configuration (ค่าจริงของคุณ)
 const firebaseConfig = {
-  apiKey: "AIzaSyA485Hm2KY-u7uclN2tKkLubhDxcNIRxrE",
-  authDomain: "wny-system.firebaseapp.com",
-  projectId: "wny-system",
-  storageBucket: "wny-system.firebasestorage.app",
-  messagingSenderId: "860974838232",
-  appId: "1:860974838232:web:bd9a64decf5c90483642ad"
+  apiKey: "AIzaSyDy_ucbp_8R_o3O4cZY_TPesbkptUERn2E",
+  authDomain: "wny-hq.firebaseapp.com",
+  projectId: "wny-hq",
+  storageBucket: "wny-hq.firebasestorage.app",
+  messagingSenderId: "1046709727117",
+  appId: "1:1046709727117:web:25570ee363e3a821a397c4"
 };
 
 // 3. Initialize Firebase & Hybrid Mode
