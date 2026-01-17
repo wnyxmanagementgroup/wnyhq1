@@ -237,15 +237,28 @@ async function fetchUserRequests() {
 }
 
 // 5. ฟังก์ชันแสดงผลรายการ (ปรับปรุงปุ่มให้ครบทั้ง Memo และ Command)
+// แก้ไขฟังก์ชัน renderRequestsList ใน requests.js
+
 function renderRequestsList(requests) {
     const container = document.getElementById('requests-list');
-    if (!container) return;
+    const noDataMessage = document.getElementById('no-requests-message');
+    
+    // ตรวจสอบว่ามี Element อยู่จริงหรือไม่ เพื่อป้องกัน Error
+    if (!container || !noDataMessage) return;
 
-    if (requests.length === 0) {
-        container.innerHTML = '<p class="text-center py-8 text-gray-500">ไม่พบรายการคำขอ</p>';
+    // กรณีไม่มีข้อมูล
+    if (!requests || requests.length === 0) {
+        container.innerHTML = '';
+        container.classList.add('hidden');      // ซ่อนรายการ
+        noDataMessage.classList.remove('hidden'); // แสดงข้อความ "ไม่พบข้อมูล"
         return;
     }
 
+    // กรณีมีข้อมูล
+    container.classList.remove('hidden');    // แสดงรายการ
+    noDataMessage.classList.add('hidden');   // ซ่อนข้อความ "ไม่พบข้อมูล"
+
+    // สร้าง HTML การ์ด
     container.innerHTML = requests.map(req => {
         const statusColor = getStatusColor(req.status);
         const isCompleted = req.status === 'เสร็จสิ้น/รับไฟล์ไปใช้งาน' || req.status === 'Approved';
@@ -257,22 +270,19 @@ function renderRequestsList(requests) {
                 <button data-id="${req.id}" data-action="edit" class="px-3 py-1 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition text-sm">
                     แก้ไข
                 </button>
-                
                 <button data-id="${req.id}" data-action="submit-memo-only" class="px-3 py-1 bg-amber-500 text-white rounded-lg hover:bg-amber-600 shadow-sm transition text-sm" title="ออกเฉพาะบันทึกข้อความ">
                     📄 บันทึกข้อความ
                 </button>
-
-                <button data-id="${req.id}" data-action="submit-and-pdf" class="px-3 py-1 bg-green-500 text-white rounded-lg hover:bg-green-600 shadow-sm transition text-sm flex items-center gap-1" title="บันทึกและออกเอกสารตามจำนวนคน">
+                <button data-id="${req.id}" data-action="submit-and-pdf" class="px-3 py-1 bg-green-500 text-white rounded-lg hover:bg-green-600 shadow-sm transition text-sm flex items-center gap-1" title="บันทึกและออกเอกสาร">
                     ✅ บันทึก/คำสั่ง
                 </button>
-
                 <button data-id="${req.id}" data-action="delete" class="px-3 py-1 text-red-400 hover:bg-red-50 rounded-lg transition text-sm">
                     ลบ
                 </button>
             `;
         } else {
             actionButtons = `
-                <span class="text-green-600 text-sm flex items-center gap-1 bg-green-50 px-2 py-1 rounded-full">
+                <span class="text-green-600 text-sm flex items-center gap-1 bg-green-50 px-3 py-1 rounded-full">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
                     ดำเนินการเสร็จสิ้น
                 </span>
@@ -280,27 +290,33 @@ function renderRequestsList(requests) {
         }
 
         return `
-        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition mb-3">
-            <div class="flex justify-between items-start mb-2">
+        <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition mb-4">
+            <div class="flex flex-wrap justify-between items-start mb-3 gap-2">
                 <div>
-                    <div class="flex items-center gap-2">
-                         <span class="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded">${req.id || 'No ID'}</span>
-                         <span class="text-xs text-gray-400">${formatDisplayDate(req.startDate)}</span>
+                    <div class="flex items-center gap-2 mb-1">
+                         <span class="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded border border-indigo-100">${req.id || 'No ID'}</span>
+                         <span class="text-xs text-gray-500 flex items-center gap-1">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                            ${formatDisplayDate(req.startDate)}
+                         </span>
                     </div>
-                    <h3 class="font-bold text-gray-800 mt-2 text-lg leading-tight">${escapeHtml(req.purpose)}</h3>
+                    <h3 class="font-bold text-gray-800 text-lg leading-tight line-clamp-2">${escapeHtml(req.purpose)}</h3>
                 </div>
-                <span class="text-xs font-medium px-2.5 py-0.5 rounded-full ${statusColor} bg-opacity-10 border border-opacity-20">
+                <span class="text-xs font-medium px-3 py-1 rounded-full ${statusColor} bg-opacity-10 border border-opacity-20 whitespace-nowrap">
                     ${req.status}
                 </span>
             </div>
             
-            <div class="text-sm text-gray-600 mb-4 mt-2 pl-1">
+            <div class="text-sm text-gray-600 mb-4 pl-1 border-l-2 border-gray-100 ml-1">
                 <div class="flex items-center gap-2 mb-1">
                     <span>📍</span> ${escapeHtml(req.location)}
                 </div>
+                 <div class="flex items-center gap-2 text-xs text-gray-500">
+                    <span>👥</span> ${req.attendeeCount ? req.attendeeCount + ' ผู้ร่วมเดินทาง' : 'เดินทางคนเดียว'}
+                </div>
             </div>
 
-            <div class="flex flex-wrap gap-2 justify-end border-t border-gray-100 pt-3">
+            <div class="flex flex-wrap gap-2 justify-end pt-3 border-t border-gray-50">
                 ${actionButtons}
             </div>
         </div>
