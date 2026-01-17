@@ -118,6 +118,7 @@ legend {
 .tab-button:not(.active) { background-color: rgba(224, 231, 255, 0.7); color: #4f46e5; }
 
 /* --- [ ADD-ON ] Glassmorphism Charts --- */
+/* --- [ แก้ไข ] สไตล์ของกล่องกราฟ --- */
 .chart-container {
     position: relative;
     background-color: rgba(255, 255, 255, 0.8) !important;
@@ -127,7 +128,26 @@ legend {
     box-shadow: 0 4px 12px 0 rgba(0, 0, 0, 0.05) !important;
     border-radius: 0.75rem;
     padding: 1.5rem;
-    min-height: 300px;
+    
+    /* แก้ไขจุดนี้: เปลี่ยนจาก min-height เป็น height ที่แน่นอน */
+    height: 400px; 
+    width: 100%;
+    overflow: hidden; /* ป้องกันกราฟล้น */
+}
+
+/* แก้ไขจุดนี้: เอา !important ออก และจัดขนาดให้พอดี */
+.chart-container canvas {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain; /* ให้กราฟอยู่ในกรอบสวยงาม */
+    display: block;
+}
+
+/* เพิ่มส่วนนี้: ปรับขนาดกราฟเมื่ออยู่บนมือถือ */
+@media (max-width: 768px) {
+    .chart-container {
+        height: 300px; /* ลดความสูงบนมือถือ */
+    }
 }
 /* Change: ใช้ Glassmorphism กับกล่องข้อมูลหน้าแรก */
 .info-section { 
