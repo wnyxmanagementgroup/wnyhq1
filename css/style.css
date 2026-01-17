@@ -126,33 +126,36 @@ legend {
 /* --- Charts & Lists --- */
 /* --- Charts & Lists (ปรับปรุงใหม่) --- */
 
-/* 1. คอนเทนเนอร์ของกราฟ: ให้ยืดหยุ่นตามเนื้อหา แต่มีความสูงขั้นต่ำ */
+/* --- Charts & Lists (แก้ไขแล้ว) --- */
+
+/* 1. คอนเทนเนอร์: ล็อกความสูงให้แน่นอน (Fixed Height) */
 .chart-container {
     position: relative; 
     border-radius: 0.75rem; 
     padding: 1rem; 
-    min-height: 350px; /* เพิ่มความสูงขั้นต่ำเพื่อให้กราฟดูง่ายขึ้น */
-    background-color: white; /* ใส่พื้นหลังสีขาว */
+    
+    /* แก้จาก min-height เป็น height เพื่อล็อกขนาด */
+    height: 400px; 
+    
+    background-color: white; 
     width: 100%;
-    overflow: hidden; /* ป้องกันกราฟล้นออกนอกกรอบ */
+    overflow: hidden; /* ป้องกันส่วนเกินล้นออกมา */
 }
 
-/* 2. ตัว Canvas: ปล่อยให้ Chart.js จัดการความสูงเอง อย่าใช้ !important บังคับ */
+/* 2. ตัวกราฟ: บังคับให้เต็มพื้นที่กล่องแม่ 100% */
 .chart-container canvas { 
     width: 100% !important; 
-    height: auto !important; /* เปลี่ยนจาก 100% เป็น auto เพื่อรักษาสัดส่วน */
+    height: 100% !important; /* บังคับเต็มความสูง 400px */
     display: block; 
+    object-fit: contain;
 }
 
-/* 3. การแสดงผลบนมือถือ */
+/* 3. การแสดงผลบนมือถือ: ปรับความสูงให้เหมาะสม */
 @media (max-width: 768px) { 
     .chart-container {
-        min-height: 300px; /* ลดความสูงลงเล็กน้อยในมือถือ */
+        height: 300px; /* ลดความสูงลงในมือถือ */
         padding: 0.5rem;
     }
-    .chart-container canvas { 
-        /* ไม่ต้องบังคับ height เป็น pixel ปล่อยให้ maintainAspectRatio ใน JS จัดการ */
-    } 
 }
 
 /* --- Info Section & Animation (คงเดิมไว้ได้ครับ สวยแล้ว) --- */
