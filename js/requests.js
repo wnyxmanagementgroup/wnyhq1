@@ -1,3 +1,4 @@
+
 // --- REQUEST FUNCTIONS (HYBRID SYSTEM: Firebase + GAS + Render) ---
 
 // 1. ตัวจัดการปุ่ม Action ต่างๆ (Router)
@@ -379,4 +380,239 @@ function openSendMemoFromNotif(requestId) {
             }
         }
     }, 600);
+}
+// --- ส่วนฟังก์ชันแก้ไขข้อมูล (ADD-ON สำหรับ Edit) ---
+
+async function openEditPage(requestId) {
+    try {
+        // 1. ดึงข้อมูลล่าสุด
+        let requestData = allRequestsCache.find(r => r.id === requestId);
+        
+        // ถ้าไม่มีใน Cache ให้ลองดึงจาก Server
+        if (!requestData) {
+            toggleLoader('requests-loader', true); // ใช้ loader ชั่วคราวถ้ามี
+            const result = await apiCall('GET', 'getDraftRequest', { requestId });
+            if (result.status === 'success') {
+                requestData = result.data;
+            } else {
+                throw new Error('ไม่พบข้อมูลคำขอนี้');
+            }
+        }
+
+        if (!requestData) throw new Error('ไม่สามารถโหลดข้อมูลได้');
+
+        // 2. จำ ID ไว้ใน Session
+        sessionStorage.setItem('currentEditRequestId', requestId);
+        document.getElementById('edit-request-id').value = requestId;
+        document.getElementById('edit-draft-id').value = requestId; // เผื่อใช้ field นี้
+
+        // 3. กรอกข้อมูลลงฟอร์มแก้ไข (Map ข้อมูลกลับเข้า Input)
+        document.getElementById('edit-doc-date').value = requestData.docDate ? requestData.docDate.split('T')[0] : '';
+        document.getElementById('edit-requester-name').value = requestData.requesterName || '';
+        document.getElementById('edit-requester-position').value = requestData.requesterPosition || '';
+        document.getElementById('edit-location').value = requestData.location || '';
+        document.getElementById('edit-purpose').value = requestData.purpose || '';
+        document.getElementById('edit-start-date').value = requestData.startDate ? requestData.startDate.split('T')[0] : '';
+        document.getElementById('edit-end-date').value = requestData.endDate ? requestData.endDate.split('T')[0] : '';
+        
+        // ผู้ร่วมเดินทาง
+        const attendeesList = document.getElementById('edit-attendees-list');
+        attendeesList.innerHTML = '';
+        if (requestData.attendees && Array.isArray(requestData.attendees)) {
+            requestData.attendees.forEach(att => addEditAttendeeField(att.name, att.position));
+        }
+
+        // ค่าใช้จ่าย
+        if (requestData.expenseOption === 'no') {
+            document.getElementById('edit-expense_no').checked = true;
+            toggleEditExpenseOptions();
+        } else {
+            document.getElementById('edit-expense_partial').checked = true;
+            toggleEditExpenseOptions();
+            
+            // ติ๊ก checkbox รายการ
+            const items = requestData.expenseItems || [];
+            document.querySelectorAll('input[name="edit-expense_item"]').forEach(cb => {
+                cb.checked = items.includes(cb.value);
+            });
+            
+            // ค่าใช้จ่ายอื่นๆ
+            const otherItem = items.find(i => !['ค่าเบี้ยเลี้ยง','ค่าอาหาร','ค่าที่พัก','ค่าพาหนะ','ค่าน้ำมัน'].includes(i));
+            if (otherItem) {
+                document.getElementById('edit-expense_other_check').checked = true;
+                document.getElementById('edit-expense_other_text').value = otherItem;
+            }
+            
+            document.getElementById('edit-total-expense').value = requestData.totalExpense || '';
+        }
+
+        // พาหนะ
+        // รีเซ็ต checkbox ก่อน
+        document.querySelectorAll('input[name="edit-vehicle_option"]').forEach(cb => cb.checked = false);
+        
+        const vOption = requestData.vehicleOption;
+        if (vOption === 'gov') {
+            document.getElementById('edit-vehicle_gov').checked = true;
+        } else if (vOption === 'private') {
+            document.getElementById('edit-vehicle_private').checked = true;
+            document.getElementById('edit-license-plate').value = requestData.licensePlate || '';
+        } else if (vOption === 'public') {
+            document.getElementById('edit-vehicle_public').checked = true;
+            document.getElementById('edit-public-vehicle-details').value = requestData.licensePlate || ''; // ใช้ field เดียวกันเก็บข้อมูล
+        }
+        toggleEditVehicleDetails();
+
+        // ผู้ลงนาม
+        document.getElementById('edit-department').value = requestData.departmentHead || '';
+        document.getElementById('edit-head-name').value = requestData.headName || '';
+
+        // 4. เปลี่ยนหน้า
+        switchPage('edit-page');
+
+    } catch (error) {
+        console.error("Open Edit Page Error:", error);
+        Swal.fire('ผิดพลาด', 'ไม่สามารถเปิดหน้าแก้ไขได้: ' + error.message, 'error');
+    }
+}
+
+// Helper: เพิ่มช่องกรอกผู้ร่วมเดินทางในหน้าแก้ไข
+function addEditAttendeeField(name = '', position = 'ครู') {
+    const list = document.getElementById('edit-attendees-list');
+    const div = document.createElement('div');
+    div.className = 'grid grid-cols-1 md:grid-cols-3 gap-2 items-center mb-2 attendee-row';
+    div.innerHTML = `
+        <input type="text" class="form-input attendee-name md:col-span-1" placeholder="ชื่อ-นามสกุล" value="${name}" required>
+        <div class="attendee-position-wrapper md:col-span-1">
+             <input type="text" class="form-input attendee-position-input" placeholder="ตำแหน่ง" value="${position}">
+        </div>
+        <button type="button" class="btn btn-danger btn-sm" onclick="this.parentElement.remove()">ลบ</button>
+    `;
+    list.appendChild(div);
+}
+
+// Helper: Toggle การแสดงผลค่าใช้จ่ายหน้าแก้ไข
+function toggleEditExpenseOptions() {
+    const isPartial = document.getElementById('edit-expense_partial').checked;
+    const details = document.getElementById('edit-partial-expense-options');
+    const total = document.getElementById('edit-total-expense-container');
+    
+    if (isPartial) {
+        details.classList.remove('hidden');
+        total.classList.remove('hidden');
+    } else {
+        details.classList.add('hidden');
+        total.classList.add('hidden');
+    }
+}
+
+// Helper: Toggle พาหนะหน้าแก้ไข
+function toggleEditVehicleDetails() {
+    const isPrivate = document.getElementById('edit-vehicle_private').checked;
+    const isPublic = document.getElementById('edit-vehicle_public').checked;
+    
+    document.getElementById('edit-private-vehicle-details').classList.toggle('hidden', !isPrivate);
+    document.getElementById('edit-public-vehicle-details').classList.toggle('hidden', !isPublic);
+}
+
+// Setup Event Listeners สำหรับหน้าแก้ไข (เรียกจาก main.js switchPage)
+function setupEditPageEventListeners() {
+    // ปุ่มเพิ่มผู้ร่วมเดินทาง
+    const addBtn = document.getElementById('edit-add-attendee');
+    // ลบ Event เดิมก่อนเพื่อป้องกันการ bind ซ้ำ
+    const newAddBtn = addBtn.cloneNode(true);
+    addBtn.parentNode.replaceChild(newAddBtn, addBtn);
+    newAddBtn.addEventListener('click', () => addEditAttendeeField());
+
+    // Radio ค่าใช้จ่าย
+    document.querySelectorAll('input[name="edit-expense_option"]').forEach(r => {
+        r.addEventListener('change', toggleEditExpenseOptions);
+    });
+
+    // Checkbox พาหนะ
+    document.querySelectorAll('input[name="edit-vehicle_option"]').forEach(c => {
+        c.addEventListener('change', () => {
+            // ทำให้เลือกได้แค่อย่างเดียว (Behavior แบบ Radio แต UI แบบ Checkbox)
+            if(c.checked) {
+                document.querySelectorAll('input[name="edit-vehicle_option"]').forEach(other => {
+                    if(other !== c) other.checked = false;
+                });
+            }
+            toggleEditVehicleDetails();
+        });
+    });
+
+    // ปุ่มบันทึกการแก้ไข (generate-document-button)
+    const saveBtn = document.getElementById('generate-document-button');
+    const newSaveBtn = saveBtn.cloneNode(true);
+    saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
+    
+    newSaveBtn.addEventListener('click', async () => {
+        // ดึงข้อมูลจากฟอร์มแก้ไข
+        const requestId = document.getElementById('edit-request-id').value;
+        const currentReq = allRequestsCache.find(r => r.id === requestId); // เอาข้อมูลเก่ามา merge
+        
+        // รวบรวมผู้ร่วมเดินทาง
+        const attendees = [];
+        document.querySelectorAll('#edit-attendees-list .attendee-row').forEach(row => {
+            attendees.push({
+                name: row.querySelector('.attendee-name').value,
+                position: row.querySelector('.attendee-position-input').value
+            });
+        });
+
+        // รวบรวมค่าใช้จ่าย
+        let expenseOption = document.querySelector('input[name="edit-expense_option"]:checked').value;
+        let expenseItems = [];
+        let totalExpense = 0;
+        if(expenseOption === 'partial') {
+            document.querySelectorAll('input[name="edit-expense_item"]:checked').forEach(cb => {
+                if(cb.id === 'edit-expense_other_check') {
+                    const txt = document.getElementById('edit-expense_other_text').value;
+                    if(txt) expenseItems.push(txt);
+                } else {
+                    expenseItems.push(cb.value);
+                }
+            });
+            totalExpense = document.getElementById('edit-total-expense').value;
+        }
+
+        // รวบรวมพาหนะ
+        let vehicleOption = 'gov';
+        let licensePlate = '';
+        if(document.getElementById('edit-vehicle_private').checked) {
+            vehicleOption = 'private';
+            licensePlate = document.getElementById('edit-license-plate').value;
+        } else if(document.getElementById('edit-vehicle_public').checked) {
+            vehicleOption = 'public';
+            licensePlate = document.getElementById('edit-public-vehicle-details').value;
+        }
+
+        // สร้าง Object ข้อมูลใหม่
+        const updatedData = {
+            ...currentReq, // เอาข้อมูลเดิมมาตั้งต้น
+            id: requestId,
+            docDate: document.getElementById('edit-doc-date').value,
+            requesterName: document.getElementById('edit-requester-name').value,
+            requesterPosition: document.getElementById('edit-requester-position').value,
+            location: document.getElementById('edit-location').value,
+            purpose: document.getElementById('edit-purpose').value,
+            startDate: document.getElementById('edit-start-date').value,
+            endDate: document.getElementById('edit-end-date').value,
+            attendees: attendees,
+            expenseOption: expenseOption,
+            expenseItems: expenseItems,
+            totalExpense: totalExpense,
+            vehicleOption: vehicleOption,
+            licensePlate: licensePlate,
+            departmentHead: document.getElementById('edit-department').value,
+            headName: document.getElementById('edit-head-name').value,
+            status: 'Submitted' // หรือสถานะเดิมถ้าไม่อยากเปลี่ยน
+        };
+
+        // เรียกฟังก์ชันบันทึกและสร้าง PDF (Re-use ฟังก์ชันที่มีอยู่)
+        await submitToSheetAndGeneratePDF(updatedData);
+    });
+
+    // ปุ่มกลับหน้า Dashboard
+    document.getElementById('back-to-dashboard').onclick = () => switchPage('dashboard-page');
 }
