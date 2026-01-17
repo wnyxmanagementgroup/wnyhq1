@@ -159,45 +159,63 @@ function addAdminAttendeeField(name = '', position = '') {
 }
 
 // ✅ [แก้ไข] ฟังก์ชันนี้ถูกเปลี่ยนให้ใช้ Cloud Run เพื่อสร้าง PDF
-async function handleAdminGenerateCommand() {
-    const requestId = document.getElementById('admin-command-request-id').value;
-    const commandType = document.querySelector('input[name="admin-command-type"]:checked')?.value;
+from fastapi import FastAPI, Request
+from docxtpl import DocxTemplate
+import subprocess
+import os
+import uuid
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
+
+app = FastAPI()
+
+# การตั้งค่า Google Drive (ใช้ Service Account JSON)
+SCOPES = ['https://www.googleapis.com/auth/drive']
+SERVICE_ACCOUNT_FILE = 'service-account.json' # คุณต้องสร้างไฟล์นี้จาก Google Cloud Console
+
+def upload_to_drive(file_path, folder_id, file_name):
+    creds = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+    service = build('drive', 'v3', credentials=creds)
     
-    if (!commandType) { 
-        showAlert('ผิดพลาด', 'กรุณาเลือกรูปแบบคำสั่ง'); 
-        return; 
+    file_metadata = {
+        'name': file_name,
+        'parents': [folder_id]
     }
-    
-    const attendees = [];
-    document.querySelectorAll('#admin-command-attendees-list > div').forEach(div => {
-        const name = div.querySelector('.admin-att-name').value.trim();
-        const pos = div.querySelector('.admin-att-pos').value.trim();
-        if (name) attendees.push({ name, position: pos });
-    });
-    
-    // เตรียมข้อมูลสำหรับส่งไปสร้าง PDF
-    const requestData = {
-        doctype: 'command', // ★ ระบุว่าเป็นคำสั่ง
-        templateType: commandType, 
-        id: requestId, 
-        docDate: document.getElementById('admin-command-doc-date').value,
-        requesterName: document.getElementById('admin-command-requester-name').value.trim(), 
-        requesterPosition: document.getElementById('admin-command-requester-position').value.trim(),
-        location: document.getElementById('admin-command-location').value.trim(), 
-        purpose: document.getElementById('admin-command-purpose').value.trim(),
-        startDate: document.getElementById('admin-command-start-date').value, 
-        endDate: document.getElementById('admin-command-end-date').value,
-        attendees: attendees, 
-        expenseOption: document.getElementById('admin-expense-option').value,
-        expenseItems: document.getElementById('admin-expense-items').value, 
-        totalExpense: document.getElementById('admin-total-expense').value,
-        vehicleOption: document.getElementById('admin-vehicle-option').value, 
-        licensePlate: document.getElementById('admin-license-plate').value
-    };
-    
-    // เรียกใช้ฟังก์ชันใหม่
-    await generateOfficialPDF(requestData);
-}
+    media = MediaFileUpload(file_path, mimetype='application/pdf')
+    file = service.files().create(body=file_metadata, media_body=media, fields='id, webViewLink').execute()
+    return file.get('webViewLink'), file.get('id')
+
+@app.post("/generate-pdf")
+async def generate_pdf(request: Request):
+    data = await request.json()
+    unique_id = str(uuid.uuid4())
+    docx_filename = f"doc_{unique_id}.docx"
+    pdf_filename = f"doc_{unique_id}.pdf"
+
+    try:
+        # 1. เลือก Template ตามประเภทที่ส่งมาจาก GAS
+        template_name = "template_memo.docx" if data.get('type') == 'memo' else "template_command.docx"
+        doc = DocxTemplate(template_name)
+        
+        # 2. Render ข้อมูลลงใน Word (ตัวแปรใน Word ต้องตรงกับ keys ใน data)
+        doc.render(data)
+        doc.save(docx_filename)
+
+        # 3. แปลงเป็น PDF ด้วย LibreOffice
+        subprocess.run(['libreoffice', '--headless', '--convert-to', 'pdf', docx_filename], check=True)
+
+        # 4. อัปโหลดขึ้น Google Drive
+        web_link, file_id = upload_to_drive(pdf_filename, data.get('folderId'), f"เอกสาร_{data.get('requestId')}.pdf")
+
+        # 5. ลบไฟล์ขยะใน Server
+        os.remove(docx_filename)
+        os.remove(pdf_filename)
+
+        return {"status": "success", "pdfUrl": web_link, "fileId": file_id}
+
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 // --- RENDER FUNCTIONS ---
 
