@@ -656,3 +656,104 @@ async function generateOfficialPDF(requestData) {
         toggleLoader('dispatch-submit-button', false);
     }
 }
+// ==========================================
+// 📝 ฟังก์ชันออกคำสั่ง (Debug Version)
+// ==========================================
+
+async function handleAdminGenerateCommand() {
+    // 1. ตรวจสอบข้อมูลเบื้องต้น
+    const requestId = document.getElementById('admin-command-request-id').value;
+    const commandType = document.querySelector('input[name="admin-command-type"]:checked')?.value;
+    
+    if (!commandType) { 
+        showAlert('หยุดการทำงาน', 'คุณยังไม่ได้เลือกรูปแบบคำสั่ง (เดี่ยว/กลุ่ม)'); 
+        return; 
+    }
+
+    // ดึงรายชื่อ
+    const attendees = [];
+    document.querySelectorAll('#admin-command-attendees-list > div').forEach(div => {
+        const name = div.querySelector('.admin-att-name').value.trim();
+        const pos = div.querySelector('.admin-att-pos').value.trim();
+        if (name) attendees.push({ name, position: pos });
+    });
+
+    // เริ่มหมุน Loader
+    toggleLoader('admin-generate-command-button', true);
+
+    try {
+        // --- STEP 1: บันทึกข้อมูล ---
+        console.log("STEP 1: กำลังบันทึกข้อมูลลง Google Sheets...");
+        // alert("STEP 1: กำลังส่งข้อมูลไปบันทึก..."); // (เปิดบรรทัดนี้ถ้าอยากให้เด้งเตือน)
+
+        const saveData = {
+            requestId: requestId,
+            templateType: commandType,
+            docDate: document.getElementById('admin-command-doc-date').value,
+            requesterName: document.getElementById('admin-command-requester-name').value.trim(),
+            requesterPosition: document.getElementById('admin-command-requester-position').value.trim(),
+            location: document.getElementById('admin-command-location').value.trim(),
+            purpose: document.getElementById('admin-command-purpose').value.trim(),
+            startDate: document.getElementById('admin-command-start-date').value,
+            endDate: document.getElementById('admin-command-end-date').value,
+            attendees: attendees,
+            expenseOption: document.getElementById('admin-expense-option').value,
+            expenseItems: document.getElementById('admin-expense-items').value,
+            totalExpense: document.getElementById('admin-total-expense').value,
+            vehicleOption: document.getElementById('admin-vehicle-option').value,
+            licensePlate: document.getElementById('admin-license-plate').value
+        };
+
+        const saveResult = await apiCall('POST', 'approveCommand', saveData);
+
+        if (saveResult.status !== 'success') {
+            throw new Error("บันทึกข้อมูลไม่สำเร็จ: " + (saveResult.message || 'Unknown Error'));
+        }
+        console.log("✅ STEP 1 สำเร็จ: บันทึกข้อมูลแล้ว");
+
+        // --- STEP 2: เตรียมสร้าง PDF ---
+        console.log("STEP 2: กำลังเตรียมสร้าง PDF...");
+        
+        // เช็คว่าไฟล์ Template มีจริงไหมก่อนส่งไป Cloud Run
+        let templateName = 'template_command_solo.docx';
+        if (commandType === 'groupSmall') templateName = 'template_command_small.docx';
+        if (commandType === 'groupLarge') templateName = 'template_command_large.docx';
+
+        const checkTemplate = await fetch(`./${templateName}`, { method: 'HEAD' });
+        if (!checkTemplate.ok) {
+            throw new Error(`หาไฟล์แม่แบบ ${templateName} ไม่เจอ (กรุณาอัปโหลดไฟล์นี้ลง Server)`);
+        }
+
+        // --- STEP 3: ส่งไป Cloud Run ---
+        console.log("STEP 3: ส่งข้อมูลไปโรงงาน PDF (Cloud Run)...");
+        
+        const pdfRequestData = {
+            doctype: 'command',
+            templateType: commandType,
+            id: requestId,
+            ...saveData 
+        };
+
+        // เรียกฟังก์ชันสร้าง PDF (ตัวนี้จะเปิดหน้าต่างใหม่)
+        await generateOfficialPDF(pdfRequestData);
+
+        // --- STEP 4: จบงาน ---
+        console.log("✅ STEP 4: เสร็จสิ้นทุกกระบวนการ");
+        
+        document.getElementById('admin-command-result-title').textContent = 'สำเร็จ!';
+        document.getElementById('admin-command-result-message').textContent = 'บันทึกข้อมูลและออกเอกสารเรียบร้อยแล้ว';
+        
+        document.getElementById('admin-command-form').classList.add('hidden');
+        document.getElementById('admin-command-result').classList.remove('hidden');
+        
+        clearRequestsCache();
+
+    } catch (error) {
+        console.error("❌ เกิดข้อผิดพลาด:", error);
+        // แจ้งเตือนให้ผู้ใช้รู้ว่าพังตรงไหน
+        alert(`เกิดข้อผิดพลาด!\n\nรายละเอียด: ${error.message}\n\n(ลองกด F12 ดู Console เพื่อดูรายละเอียดเพิ่มเติม)`);
+    } finally {
+        // สำคัญ: ต้องหยุดหมุนไม่ว่าจะเกิดอะไรขึ้น
+        toggleLoader('admin-generate-command-button', false);
+    }
+}
