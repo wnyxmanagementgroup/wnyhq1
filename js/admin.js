@@ -205,7 +205,7 @@ async function generateOfficialPDF(requestData) {
             templateFilename = 'template_memo.docx';
         } else if (requestData.doctype === 'command') {
             if (requestData.templateType === 'solo') templateFilename = 'template_command_solo.docx';
-            else if (requestData.templateType === 'groupSmall') templateFilename = 'template_command_small.docx';
+            else if (requestData.templateType === 'groupSmall') templateFilename = 'template_command_small_V2.docx';
             else if (requestData.templateType === 'groupLarge') templateFilename = 'template_command_large.docx';
             else templateFilename = 'template_command_solo.docx';
         } else if (requestData.doctype === 'dispatch') {
