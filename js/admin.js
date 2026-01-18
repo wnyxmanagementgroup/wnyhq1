@@ -189,165 +189,107 @@ async function handleAdminGenerateCommand() {
 // ★★★ ฟังก์ชันสร้าง PDF (หัวใจสำคัญ) ★★★
 // ==========================================
 
+// --- ค้นหาฟังก์ชัน generateOfficialPDF เดิมใน admin.js แล้วแทนที่ด้วยโค้ดนี้ ---
+
 async function generateOfficialPDF(requestData) {
+    // 1. ระบุปุ่มที่จะแสดง Loader
+    let btnId = 'generate-document-button'; 
+    if (requestData.doctype === 'dispatch') btnId = 'dispatch-submit-button';
+    if (requestData.doctype === 'command') btnId = 'admin-generate-command-button';
+    
+    toggleLoader(btnId, true); 
+
     try {
-        // 1. แจ้งเตือน: กำลังทำงาน...
-        let btnId = 'generate-document-button'; 
-        if (requestData.doctype === 'dispatch') btnId = 'dispatch-submit-button';
-        if (requestData.doctype === 'command') btnId = 'admin-generate-command-button';
-        
-        toggleLoader(btnId, true); 
-
-        // 2. เลือกไฟล์ Template (ตามตรรกะที่คุณวางไว้)
+        // 2. เลือกไฟล์แม่แบบจาก Config (ลดการ Hardcode)
         let templateFilename = '';
+        const T = PDF_ENGINE_CONFIG.TEMPLATES; // ดึงจาก Config
 
-        if (requestData.doctype === 'memo') {
-            templateFilename = 'template_memo.docx';
-        } else if (requestData.doctype === 'command') {
-            if (requestData.templateType === 'solo') templateFilename = 'template_command_solo.docx';
-            else if (requestData.templateType === 'groupSmall') templateFilename = 'template_command_small_V2.docx';
-            else if (requestData.templateType === 'groupLarge') templateFilename = 'template_command_large.docx';
-            else templateFilename = 'template_command_solo.docx';
+        if (requestData.doctype === 'command') {
+            if (requestData.templateType === 'solo') templateFilename = T.COMMAND_SOLO;
+            else if (requestData.templateType === 'groupSmall') templateFilename = T.COMMAND_SMALL;
+            else if (requestData.templateType === 'groupLarge') templateFilename = T.COMMAND_LARGE;
+            else templateFilename = T.COMMAND_SOLO;
         } else if (requestData.doctype === 'dispatch') {
-            templateFilename = 'template_dispatch.docx';
+            templateFilename = T.DISPATCH;
         }
 
-        console.log(`กำลังดึงแม่แบบ: ${templateFilename}`);
+        console.log(`📂 กำลังโหลดแม่แบบ: ${templateFilename}`);
 
         // 3. โหลดไฟล์แม่แบบจาก Server
         const response = await fetch(`./${templateFilename}`);
-        if (!response.ok) throw new Error(`ไม่พบไฟล์แม่แบบ ${templateFilename} กรุณาอัปโหลดไฟล์นี้ไว้ที่เดียวกับ index.html`);
+        if (!response.ok) {
+            throw new Error(`ไม่พบไฟล์แม่แบบ "${templateFilename}" บน Server`);
+        }
         
         const content = await response.arrayBuffer();
 
-        // 4. เริ่มต้นกระบวนการหยอดข้อมูลลง Word
+        // 4. แทนที่ข้อมูล (Client-side Templating)
         const zip = new PizZip(content);
         const doc = new window.docxtemplater(zip, {
             paragraphLoop: true,
             linebreaks: true,
         });
 
-        // --- เตรียมข้อมูล (Data Mapping) ให้ครบทุกช่อง ---
-        
-        // จัดการรายการค่าใช้จ่าย (Checkbox)
-        let expenseItems = [];
-        try { 
-            expenseItems = typeof requestData.expenseItems === 'string' ? JSON.parse(requestData.expenseItems) : (requestData.expenseItems || []); 
-        } catch(e) {}
-        
-        // ฟังก์ชันเช็คว่ามีค่าใช้จ่ายตัวนี้ไหม ถ้ามีให้ใส่เครื่องหมายถูก ✓
-        const hasExpense = (name) => expenseItems.some(i => i.name === name) ? '✓' : '';
-        const expenseOther = expenseItems.find(i => i.name === 'ค่าใช้จ่ายอื่นๆ');
-
-        // ข้อมูลที่จะส่งไปแทนที่ใน Word (ต้องตรงกับ {{...}} ในไฟล์ Word)
-        const dataToRender = {
-            // ข้อมูลพื้นฐาน
-            doc_number: requestData.id || ".....",
-            doc_date: formatDisplayDate(requestData.docDate),
-            
-            // ชื่อและตำแหน่ง (ใส่เผื่อไว้ทั้ง 2 ชื่อ)
-            requesterName: requestData.requesterName, 
+        // Map ข้อมูลเข้ากับตัวแปรใน Word
+        doc.render({
+            doc_no: requestData.id || "รอออกเลข",
+            date: formatDisplayDate(requestData.docDate),
             requester: requestData.requesterName,
-            requester_position: requestData.requesterPosition,
             position: requestData.requesterPosition,
-            
-            // สังกัดและหัวหน้า
             department: requestData.department,
-            head_name: requestData.headName || '.....................................',
-            learning_area: requestData.department || '.....................................',
-            
             purpose: requestData.purpose,
             location: requestData.location,
-            
-            // วันที่และเวลา
             start_date: formatDisplayDate(requestData.startDate),
             end_date: formatDisplayDate(requestData.endDate),
-            date_range: `${formatDisplayDate(requestData.startDate)} - ${formatDisplayDate(requestData.endDate)}`,
-            
-            // ข้อมูลคำนวณอัตโนมัติ (จำนวนวัน, จำนวนคน)
-            duration: calculateDuration(requestData.startDate, requestData.endDate),
-            total_count: (requestData.attendees ? requestData.attendees.length : 0) + 1, // รวมผู้ขอเป็น 1
-
-            // วันที่แบบแยกส่วน (สำหรับคำสั่งราชการ)
-            MMMM: getThaiMonth(requestData.docDate),
-            YYYY: getThaiYear(requestData.docDate),
-
-            // Checkbox ค่าใช้จ่าย (✓)
-            expense_no: requestData.expenseOption === 'no' ? '✓' : '',
-            expense_partial: requestData.expenseOption === 'partial' ? '✓' : '',
-            expense_allowance: hasExpense('ค่าเบี้ยเลี้ยง'),
-            expense_food: hasExpense('ค่าอาหาร'),
-            expense_accommodation: hasExpense('ค่าที่พัก'),
-            expense_transport: hasExpense('ค่าพาหนะ'),
-            expense_fuel: hasExpense('ค่าน้ำมัน'),
-            expense_other_check: expenseOther ? '✓' : '',
-            expense_other_text: expenseOther ? expenseOther.detail : '',
-            expense_total: requestData.totalExpense ? Number(requestData.totalExpense).toLocaleString() : '-',
-
-            // Checkbox พาหนะ (✓)
-            vehicle_gov: requestData.vehicleOption === 'gov' ? '✓' : '',
-            vehicle_private: requestData.vehicleOption === 'private' ? '✓' : '',
-            vehicle_public: requestData.vehicleOption === 'public' ? '✓' : '',
-            license_plate: requestData.licensePlate || '-',
-
-            // ข้อมูลหนังสือส่ง (Dispatch)
             dispatch_month: requestData.dispatchMonth,
             dispatch_year: requestData.dispatchYear,
             command_count: requestData.commandCount,
             memo_count: requestData.memoCount,
+            attendees: requestData.attendees || [] 
+        });
 
-            // รายชื่อผู้ร่วมเดินทาง (Loop ตาราง)
-            attendees: (requestData.attendees || []).map((att, idx) => ({
-                i: idx + 1, // ลำดับที่เริ่มจาก 1
-                name: att.name,
-                position: att.position
-            }))
-        };
-
-        // 5. หยอดข้อมูลลง Word (Render)
-        try {
-            doc.render(dataToRender);
-        } catch (error) {
-            // ดักจับ Error หาก Template ผิดพลาด
-            if (error.properties && error.properties.errors) {
-                const errorMessages = error.properties.errors.map(err => err.properties.explanation).join("\n");
-                throw new Error("Template Error: " + errorMessages);
-            }
-            throw error;
-        }
-
-        // 6. สร้างไฟล์ Word และส่งไปแปลงเป็น PDF ที่ Cloud Run
         const docxBlob = doc.getZip().generate({
             type: "blob",
             mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         });
 
+        // 5. ส่งไปแปลงเป็น PDF ที่ Cloud Run (พร้อม Timeout)
         const formData = new FormData();
         formData.append("files", docxBlob, "document.docx");
 
-        // ★★★ URL Cloud Run ของคุณ ★★★
-        const cloudRunUrl = "https://pdf-engine-660310608742.asia-southeast1.run.app"; 
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), PDF_ENGINE_CONFIG.TIMEOUT);
+
+        console.log("🚀 กำลังส่งไปแปลง PDF ที่ Cloud Run...");
         
-        const pdfResponse = await fetch(`${cloudRunUrl}/forms/libreoffice/convert`, {
+        const cloudRunResponse = await fetch(`${PDF_ENGINE_CONFIG.BASE_URL}/forms/libreoffice/convert`, {
             method: "POST",
-            body: formData
+            body: formData,
+            signal: controller.signal
         });
 
-        if (!pdfResponse.ok) throw new Error("เกิดข้อผิดพลาดที่ Server แปลงไฟล์ (Cloud Run Error)");
+        clearTimeout(timeoutId); 
 
-        // 7. รับไฟล์ PDF กลับมาและเปิด
-        const pdfBlob = await pdfResponse.blob();
+        if (!cloudRunResponse.ok) {
+            throw new Error(`Server Error (${cloudRunResponse.status}): แปลงไฟล์ไม่สำเร็จ`);
+        }
+
+        // 6. เปิดไฟล์ PDF
+        const pdfBlob = await cloudRunResponse.blob();
         const pdfUrl = window.URL.createObjectURL(pdfBlob);
-        window.open(pdfUrl, '_blank'); // เปิด Tab ใหม่
+        window.open(pdfUrl, '_blank');
 
     } catch (error) {
-        console.error(error);
-        alert("เกิดข้อผิดพลาด: " + error.message);
+        console.error("PDF Generation Error:", error);
+        
+        let msg = error.message;
+        if (error.name === 'AbortError') msg = "การเชื่อมต่อหมดเวลา (Timeout) - ระบบอาจทำงานหนัก";
+        if (msg.includes('Failed to fetch')) msg = "ไม่สามารถเชื่อมต่อ Server แปลงไฟล์ได้";
+
+        alert(`❌ เกิดข้อผิดพลาด: ${msg}`);
+        
     } finally {
-        // ปิด Loader ทุกปุ่มเพื่อความชัวร์
-        toggleLoader('generate-document-button', false);
-        toggleLoader('admin-generate-command-button', false);
-        toggleLoader('dispatch-submit-button', false);
+        toggleLoader(btnId, false);
     }
 }
 
