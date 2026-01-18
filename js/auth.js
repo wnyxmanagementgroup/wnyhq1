@@ -1,5 +1,7 @@
 // --- AUTH FUNCTIONS (HYBRID SYSTEM) ---
 
+// ในไฟล์ js/auth.js
+
 async function handleLogin(e) {
     e.preventDefault();
     
@@ -15,43 +17,39 @@ async function handleLogin(e) {
     document.getElementById('login-error').classList.add('hidden');
     
     try {
-        console.log('Attempting login for:', username);
-        
         let result = null;
 
-        // 1. FAST LOGIN: ลอง Login ผ่าน Firebase ก่อน
+        // 1. FAST LOGIN: Firebase
         if (typeof loginWithFirebase === 'function' && typeof USE_FIREBASE !== 'undefined' && USE_FIREBASE) {
             result = await loginWithFirebase(username, password);
-            if (result) console.log("⚡ Logged in via Firebase (Fast)");
         }
 
-        // 2. FALLBACK: ถ้าไม่เจอใน Firebase ให้ไปถาม Google Apps Script
+        // 2. FALLBACK: GAS
         if (!result) {
-            console.log("🐌 User not found in Firebase, falling back to GAS...");
-            result = await apiCall('POST', 'verifyCredentials', { 
-                username: username, 
-                password: password 
-            });
+            result = await apiCall('POST', 'verifyCredentials', { username, password });
         }
         
         if (result.status === 'success') {
+            // บันทึก Session
             sessionStorage.setItem('currentUser', JSON.stringify(result.user));
             window.currentUser = result.user;
             
-            initializeUserSession(result.user);
-            showMainApp();
-            await switchPage('dashboard-page');
+            // ✅ จุดแยกทาง: ตรวจสอบ Role
+            if (result.user.role === 'admin') {
+                console.log('Redirecting to Admin Panel...');
+                window.location.href = 'admin.html'; // ส่งไปบ้านแอดมิน
+            } else {
+                console.log('Redirecting to User Dashboard...');
+                window.location.href = 'index.html'; // ส่งไปบ้านผู้ใช้ (หรือรีโหลดหน้า)
+            }
             
-            if (typeof fetchUserRequests === 'function') fetchUserRequests();
-            
-            showAlert('สำเร็จ', 'เข้าสู่ระบบสำเร็จ');
         } else {
             document.getElementById('login-error').textContent = result.message || 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง';
             document.getElementById('login-error').classList.remove('hidden');
         }
     } catch (error) {
-        console.error('Login error:', error);
-        document.getElementById('login-error').textContent = 'เกิดข้อผิดพลาดในการเข้าสู่ระบบ';
+        console.error('Login Error:', error);
+        document.getElementById('login-error').textContent = 'เกิดข้อผิดพลาดในการเชื่อมต่อ';
         document.getElementById('login-error').classList.remove('hidden');
     } finally {
         toggleLoader('login-button', false);
