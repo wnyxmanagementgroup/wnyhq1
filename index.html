@@ -10,45 +10,68 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.1/chart.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
     <link rel="stylesheet" href="css/style.css">
+    <style>
+        body { font-family: 'Sarabun', sans-serif; }
+        .loader-spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #4f46e5;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .page-view { transition: opacity 0.3s ease-in-out; }
+    </style>
 </head>
-<body class="bg-gray-50 min-h-screen font-['Sarabun'] text-gray-800">
+<body class="bg-gray-50 min-h-screen text-gray-800">
 
-    <div id="login-screen" class="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-pink-50 to-indigo-50">
-        <div class="bg-white p-8 rounded-xl shadow-xl w-full max-w-md border border-gray-100">
+    <div id="login-screen" class="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-indigo-50 to-blue-100">
+        <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-gray-100">
             <div class="text-center mb-8">
-                <img src="https://upload.wikimedia.org/wikipedia/commons/1/15/Wny-logo.png" alt="Logo" class="h-24 mx-auto mb-4 drop-shadow-sm">
-                <h1 class="text-2xl font-bold text-indigo-800">ระบบไปราชการ</h1>
+                <img src="https://upload.wikimedia.org/wikipedia/commons/1/15/Wny-logo.png" alt="Logo" class="h-24 mx-auto mb-4 drop-shadow-md hover:scale-105 transition-transform duration-300">
+                <h1 class="text-2xl font-bold text-indigo-900">ระบบบริหารจัดการไปราชการ</h1>
                 <p class="text-gray-500 text-sm mt-1">โรงเรียนวังน้ำเย็นวิทยาคม</p>
             </div>
             
             <form id="login-form" class="space-y-5">
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">ชื่อผู้ใช้ (Username)</label>
-                    <input type="text" id="username" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition" placeholder="กรอกชื่อผู้ใช้..." required>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">👤</span>
+                        <input type="text" id="username" class="w-full pl-10 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition" placeholder="กรอกชื่อผู้ใช้..." required>
+                    </div>
                 </div>
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">รหัสผ่าน (Password)</label>
-                    <input type="password" id="password" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition" placeholder="••••••••" required>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">🔒</span>
+                        <input type="password" id="password" class="w-full pl-10 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition" placeholder="••••••••" required>
+                    </div>
                 </div>
                 
-                <div id="login-error" class="hidden bg-red-50 text-red-600 text-sm p-3 rounded-lg text-center border border-red-100"></div>
+                <div id="login-error" class="hidden bg-red-50 text-red-600 text-sm p-3 rounded-lg text-center border border-red-100 flex items-center justify-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    <span id="login-error-text"></span>
+                </div>
                 
-                <button type="submit" id="login-button" class="w-full bg-indigo-600 text-white font-bold py-3 rounded-lg hover:bg-indigo-700 shadow-lg hover:shadow-xl transition transform hover:-translate-y-0.5">
-                    เข้าสู่ระบบ
+                <button type="submit" id="login-button" class="w-full bg-indigo-600 text-white font-bold py-3 rounded-lg hover:bg-indigo-700 shadow-lg hover:shadow-xl transition transform hover:-translate-y-0.5 flex justify-center items-center gap-2">
+                    <span>เข้าสู่ระบบ</span>
                 </button>
             </form>
 
-            <div class="mt-6 flex justify-between items-center text-sm px-2">
-                 <button id="show-register-modal-button" class="text-indigo-600 hover:text-indigo-800 font-medium">ลงทะเบียนใหม่</button>
-                 <button id="show-forgot-password-modal" class="text-gray-500 hover:text-gray-700">ลืมรหัสผ่าน?</button>
+            <div class="mt-6 flex justify-between items-center text-sm px-2 border-t pt-4 border-gray-100">
+                 <button id="show-register-modal-button" class="text-indigo-600 hover:text-indigo-800 font-medium hover:underline">ลงทะเบียนใหม่</button>
+                 <button id="show-forgot-password-modal" class="text-gray-500 hover:text-gray-700 hover:underline">ลืมรหัสผ่าน?</button>
             </div>
         </div>
     </div>
 
     <div id="app-content" class="hidden flex flex-col min-h-screen">
         
-        <nav class="bg-white shadow-md z-30 sticky top-0">
+        <nav class="bg-white shadow-md z-30 sticky top-0 border-b border-gray-200">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="flex justify-between h-16">
                     <div class="flex items-center gap-3">
@@ -58,10 +81,13 @@
                             <span class="text-xs text-gray-500">ระบบบริหารจัดการ</span>
                         </div>
                     </div>
+                    
                     <div class="flex items-center gap-4">
-                        <div id="user-display" class="text-sm text-right hidden sm:block"></div>
+                        <div id="user-display" class="text-sm text-right hidden sm:block bg-gray-50 px-3 py-1 rounded-full border border-gray-200">
+                            </div>
                         <div class="h-8 w-px bg-gray-200 hidden sm:block"></div>
-                        <button id="logout-button" class="text-red-600 hover:bg-red-50 hover:text-red-700 px-3 py-1.5 rounded-md text-sm font-medium transition border border-transparent hover:border-red-100">
+                        <button id="logout-button" class="flex items-center gap-2 text-red-600 hover:bg-red-50 hover:text-red-700 px-3 py-1.5 rounded-md text-sm font-medium transition border border-transparent hover:border-red-100">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
                             ออกจากระบบ
                         </button>
                     </div>
@@ -71,193 +97,276 @@
 
         <div class="flex-1 flex flex-col md:flex-row max-w-7xl mx-auto w-full">
             
-            <aside class="hidden md:block w-64 bg-white border-r border-gray-200 min-h-[calc(100vh-4rem)] p-4">
+            <aside class="hidden md:block w-64 bg-white border-r border-gray-200 min-h-[calc(100vh-4rem)] p-4 sticky top-16 h-full">
                 <div class="space-y-1">
-                    <button class="nav-button w-full text-left px-4 py-3 rounded-lg text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition flex items-center gap-3 active" data-target="dashboard-page">
-                        <span>🏠</span> หน้าหลัก / ติดตามสถานะ
+                    <button class="nav-button w-full text-left px-4 py-3 rounded-lg text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition flex items-center gap-3 active font-medium" data-target="dashboard-page">
+                        <span class="text-xl">🏠</span> หน้าหลัก / ติดตามสถานะ
                     </button>
-                    <button class="nav-button w-full text-left px-4 py-3 rounded-lg text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition flex items-center gap-3" data-target="form-page">
-                        <span>✍️</span> เขียนคำขอไปราชการ
+                    <button class="nav-button w-full text-left px-4 py-3 rounded-lg text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition flex items-center gap-3 font-medium" data-target="form-page">
+                        <span class="text-xl">✍️</span> เขียนคำขอไปราชการ
                     </button>
-                    <button class="nav-button w-full text-left px-4 py-3 rounded-lg text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition flex items-center gap-3" data-target="profile-page">
-                        <span>👤</span> ข้อมูลส่วนตัว
+                    <button class="nav-button w-full text-left px-4 py-3 rounded-lg text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition flex items-center gap-3 font-medium" data-target="profile-page">
+                        <span class="text-xl">👤</span> ข้อมูลส่วนตัว
                     </button>
+                </div>
+                
+                <div class="mt-8 p-4 bg-indigo-50 rounded-lg border border-indigo-100">
+                    <h4 class="text-xs font-bold text-indigo-800 uppercase mb-2">ช่วยเหลือ</h4>
+                    <p class="text-xs text-gray-600 mb-2">หากพบปัญหาการใช้งาน ติดต่อแอดมิน</p>
+                    <div class="text-xs text-gray-500">v2.5 (User Only)</div>
                 </div>
             </aside>
 
-            <main class="flex-1 p-4 sm:p-6 bg-gray-50 overflow-y-auto pb-24 md:pb-6">
+            <main class="flex-1 p-4 sm:p-6 bg-gray-50 overflow-y-auto pb-24 md:pb-6 w-full">
                 
                 <div id="dashboard-page" class="page-view animate-fade-in">
-                    <div class="flex justify-between items-center mb-6">
-                        <h2 class="text-2xl font-bold text-gray-800">รายการคำขอของฉัน</h2>
-                        <button onclick="switchPage('form-page')" class="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 shadow-sm text-sm sm:text-base">
-                            + สร้างคำขอใหม่
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                        <div>
+                            <h2 class="text-2xl font-bold text-gray-800">รายการคำขอของฉัน</h2>
+                            <p class="text-sm text-gray-500">ติดตามสถานะและประวัติการไปราชการ</p>
+                        </div>
+                        <button onclick="switchPage('form-page')" class="w-full sm:w-auto bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 shadow-sm text-sm sm:text-base font-medium flex items-center justify-center gap-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                            สร้างคำขอใหม่
                         </button>
                     </div>
                     
                     <div class="relative mb-6">
-                        <input type="text" id="search-requests" placeholder="ค้นหา... (เลขที่หนังสือ, เรื่อง, สถานที่)" class="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-300">
-                        <span class="absolute left-3 top-2.5 text-gray-400">🔍</span>
+                        <input type="text" id="search-requests" placeholder="ค้นหา... (เลขที่หนังสือ, เรื่อง, สถานที่)" class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-300 shadow-sm">
+                        <span class="absolute left-3 top-3.5 text-gray-400">🔍</span>
                     </div>
 
                     <div id="my-requests-list" class="space-y-4">
-                        <div class="text-center py-10">
+                        <div class="text-center py-20 bg-white rounded-xl border border-gray-200 shadow-sm">
                             <div class="loader-spinner mx-auto mb-3"></div>
-                            <p class="text-gray-500">กำลังโหลดข้อมูล...</p>
+                            <p class="text-gray-500 font-medium">กำลังโหลดข้อมูล...</p>
                         </div>
                     </div>
                 </div>
 
                 <div id="form-page" class="page-view hidden animate-fade-in">
-                    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                        <div class="bg-indigo-600 px-6 py-4 flex justify-between items-center">
-                            <h2 class="text-lg font-bold text-white">แบบฟอร์มขออนุญาตไปราชการ</h2>
-                            <button type="button" class="text-indigo-100 hover:text-white text-sm underline" id="form-download-template">ดาวน์โหลด Template รายชื่อ</button>
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                        <div class="bg-indigo-600 px-6 py-4 flex justify-between items-center border-b border-indigo-700">
+                            <div class="text-white">
+                                <h2 class="text-lg font-bold">แบบฟอร์มขออนุญาตไปราชการ</h2>
+                                <p class="text-xs text-indigo-200">กรุณากรอกข้อมูลให้ครบถ้วน</p>
+                            </div>
+                            <button type="button" class="text-indigo-100 hover:text-white text-sm bg-indigo-700 hover:bg-indigo-800 px-3 py-1 rounded transition" id="form-download-template">
+                                📥 โหลด Template รายชื่อ
+                            </button>
                         </div>
                         
-                        <form id="request-form" class="p-6 space-y-6">
-                            <input type="hidden" id="form-request-id"> <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div>
-                                    <label class="label-text">วันที่ทำเอกสาร</label>
-                                    <input type="date" id="form-doc-date" class="form-input" required>
-                                </div>
-                                <div>
-                                    <label class="label-text">ส่วนราชการ/กลุ่มสาระฯ</label>
-                                    <select id="form-department" class="form-input" required>
-                                        <option value="">-- เลือกกลุ่มสาระ --</option>
-                                        <option value="กลุ่มบริหารวิชาการ">กลุ่มบริหารวิชาการ</option>
-                                        <option value="กลุ่มบริหารงบประมาณ">กลุ่มบริหารงบประมาณ</option>
-                                        <option value="กลุ่มบริหารงานบุคคล">กลุ่มบริหารงานบุคคล</option>
-                                        <option value="กลุ่มบริหารทั่วไป">กลุ่มบริหารทั่วไป</option>
-                                        <option value="กลุ่มสาระการเรียนรู้ภาษาไทย">กลุ่มสาระฯ ภาษาไทย</option>
-                                        <option value="กลุ่มสาระการเรียนรู้คณิตศาสตร์">กลุ่มสาระฯ คณิตศาสตร์</option>
-                                        <option value="กลุ่มสาระการเรียนรู้วิทยาศาสตร์และเทคโนโลยี">กลุ่มสาระฯ วิทยาศาสตร์และเทคโนโลยี</option>
-                                        <option value="กลุ่มสาระการเรียนรู้สังคมศึกษา ศาสนา และวัฒนธรรม">กลุ่มสาระฯ สังคมศึกษาฯ</option>
-                                        <option value="กลุ่มสาระการเรียนรู้สุขศึกษาและพลศึกษา">กลุ่มสาระฯ สุขศึกษาและพลศึกษา</option>
-                                        <option value="กลุ่มสาระการเรียนรู้ศิลปะ">กลุ่มสาระฯ ศิลปะ</option>
-                                        <option value="กลุ่มสาระการเรียนรู้การงานอาชีพ">กลุ่มสาระฯ การงานอาชีพ</option>
-                                        <option value="กลุ่มสาระการเรียนรู้ภาษาต่างประเทศ">กลุ่มสาระฯ ภาษาต่างประเทศ</option>
-                                        <option value="กิจกรรมพัฒนาผู้เรียน">กิจกรรมพัฒนาผู้เรียน</option>
-                                        <option value="อื่นๆ">อื่นๆ</option>
-                                    </select>
-                                </div>
-                            </div>
-
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div>
-                                    <label class="label-text">ชื่อ-นามสกุล (ผู้ขอ)</label>
-                                    <input type="text" id="form-requester-name" class="form-input bg-gray-50" readonly required>
-                                </div>
-                                <div>
-                                    <label class="label-text">ตำแหน่ง</label>
-                                    <input type="text" id="form-requester-position" class="form-input" required>
+                        <form id="request-form" class="p-6 space-y-8">
+                            <input type="hidden" id="form-request-id"> <div class="space-y-4">
+                                <h3 class="text-sm font-bold text-gray-500 uppercase tracking-wider border-b pb-1">1. ข้อมูลพื้นฐาน</h3>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">วันที่ทำเอกสาร <span class="text-red-500">*</span></label>
+                                        <input type="date" id="form-doc-date" class="w-full p-2 border border-gray-300 rounded focus:ring-indigo-500 focus:border-indigo-500" required>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">ส่วนราชการ/กลุ่มสาระฯ <span class="text-red-500">*</span></label>
+                                        <select id="form-department" class="w-full p-2 border border-gray-300 rounded focus:ring-indigo-500 focus:border-indigo-500" required>
+                                            <option value="">-- เลือกกลุ่มสาระ --</option>
+                                            <option value="กลุ่มบริหารวิชาการ">กลุ่มบริหารวิชาการ</option>
+                                            <option value="กลุ่มบริหารงบประมาณ">กลุ่มบริหารงบประมาณ</option>
+                                            <option value="กลุ่มบริหารงานบุคคล">กลุ่มบริหารงานบุคคล</option>
+                                            <option value="กลุ่มบริหารทั่วไป">กลุ่มบริหารทั่วไป</option>
+                                            <option value="กลุ่มสาระการเรียนรู้ภาษาไทย">กลุ่มสาระฯ ภาษาไทย</option>
+                                            <option value="กลุ่มสาระการเรียนรู้คณิตศาสตร์">กลุ่มสาระฯ คณิตศาสตร์</option>
+                                            <option value="กลุ่มสาระการเรียนรู้วิทยาศาสตร์และเทคโนโลยี">กลุ่มสาระฯ วิทยาศาสตร์และเทคโนโลยี</option>
+                                            <option value="กลุ่มสาระการเรียนรู้สังคมศึกษา ศาสนา และวัฒนธรรม">กลุ่มสาระฯ สังคมศึกษาฯ</option>
+                                            <option value="กลุ่มสาระการเรียนรู้สุขศึกษาและพลศึกษา">กลุ่มสาระฯ สุขศึกษาและพลศึกษา</option>
+                                            <option value="กลุ่มสาระการเรียนรู้ศิลปะ">กลุ่มสาระฯ ศิลปะ</option>
+                                            <option value="กลุ่มสาระการเรียนรู้การงานอาชีพ">กลุ่มสาระฯ การงานอาชีพ</option>
+                                            <option value="กลุ่มสาระการเรียนรู้ภาษาต่างประเทศ">กลุ่มสาระฯ ภาษาต่างประเทศ</option>
+                                            <option value="กิจกรรมพัฒนาผู้เรียน">กิจกรรมพัฒนาผู้เรียน</option>
+                                            <option value="อื่นๆ">อื่นๆ</option>
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
 
-                            <div>
-                                <label class="label-text">เรื่อง / วัตถุประสงค์</label>
-                                <textarea id="form-purpose" rows="2" class="form-input" placeholder="เช่น เข้าร่วมการอบรมเชิงปฏิบัติการ..." required></textarea>
-                            </div>
-                            <div>
-                                <label class="label-text">สถานที่ไปราชการ</label>
-                                <input type="text" id="form-location" class="form-input" placeholder="เช่น โรงเรียนวังน้ำเย็นวิทยาคม" required>
-                            </div>
-
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div>
-                                    <label class="label-text">วันที่เริ่มต้น</label>
-                                    <input type="date" id="form-start-date" class="form-input" required>
-                                </div>
-                                <div>
-                                    <label class="label-text">วันที่สิ้นสุด</label>
-                                    <input type="date" id="form-end-date" class="form-input" required>
+                            <div class="space-y-4">
+                                <h3 class="text-sm font-bold text-gray-500 uppercase tracking-wider border-b pb-1">2. ข้อมูลผู้ขออนุญาต</h3>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">ชื่อ-นามสกุล (ผู้ขอ) <span class="text-red-500">*</span></label>
+                                        <input type="text" id="form-requester-name" class="w-full p-2 border border-gray-300 rounded bg-gray-50 text-gray-600 cursor-not-allowed" readonly required>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">ตำแหน่ง <span class="text-red-500">*</span></label>
+                                        <input type="text" id="form-requester-position" class="w-full p-2 border border-gray-300 rounded focus:ring-indigo-500 focus:border-indigo-500" required>
+                                    </div>
                                 </div>
                             </div>
 
-                            <div class="border-t pt-4">
-                                <div class="flex justify-between items-center mb-2">
-                                    <label class="label-text text-lg">ผู้ร่วมเดินทาง</label>
+                            <div class="space-y-4">
+                                <h3 class="text-sm font-bold text-gray-500 uppercase tracking-wider border-b pb-1">3. รายละเอียดการไปราชการ</h3>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">เรื่อง / วัตถุประสงค์ <span class="text-red-500">*</span></label>
+                                    <textarea id="form-purpose" rows="2" class="w-full p-2 border border-gray-300 rounded focus:ring-indigo-500 focus:border-indigo-500" placeholder="เช่น เข้าร่วมการอบรมเชิงปฏิบัติการเรื่อง..." required></textarea>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">สถานที่ไปราชการ <span class="text-red-500">*</span></label>
+                                    <input type="text" id="form-location" class="w-full p-2 border border-gray-300 rounded focus:ring-indigo-500 focus:border-indigo-500" placeholder="เช่น โรงเรียนวังน้ำเย็นวิทยาคม" required>
+                                </div>
+
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">วันที่เริ่มต้น <span class="text-red-500">*</span></label>
+                                        <input type="date" id="form-start-date" class="w-full p-2 border border-gray-300 rounded focus:ring-indigo-500 focus:border-indigo-500" required>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">วันที่สิ้นสุด <span class="text-red-500">*</span></label>
+                                        <input type="date" id="form-end-date" class="w-full p-2 border border-gray-300 rounded focus:ring-indigo-500 focus:border-indigo-500" required>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="space-y-4">
+                                <div class="flex justify-between items-center border-b pb-1">
+                                    <h3 class="text-sm font-bold text-gray-500 uppercase tracking-wider">4. ผู้ร่วมเดินทาง</h3>
                                     <div class="space-x-2">
-                                        <button type="button" id="form-import-excel" class="text-sm bg-green-100 text-green-700 px-3 py-1 rounded hover:bg-green-200">นำเข้า Excel</button>
+                                        <button type="button" id="form-import-excel" class="text-xs bg-green-50 text-green-700 border border-green-200 px-3 py-1 rounded hover:bg-green-100 transition">
+                                            📊 นำเข้า Excel
+                                        </button>
                                         <input type="file" id="excel-file-input" accept=".xlsx, .xls" class="hidden">
-                                        <button type="button" id="form-add-attendee" class="text-sm bg-indigo-100 text-indigo-700 px-3 py-1 rounded hover:bg-indigo-200">+ เพิ่มรายชื่อ</button>
+                                        <button type="button" id="form-add-attendee" class="text-xs bg-indigo-50 text-indigo-700 border border-indigo-200 px-3 py-1 rounded hover:bg-indigo-100 transition">
+                                            + เพิ่มรายชื่อ
+                                        </button>
                                     </div>
                                 </div>
-                                <div id="form-attendees-list" class="space-y-2 bg-gray-50 p-3 rounded-lg border border-gray-200 min-h-[50px]">
-                                    </div>
-                            </div>
-
-                            <div class="border-t pt-4">
-                                <label class="label-text text-lg mb-2 block">งบประมาณ</label>
-                                <div class="flex flex-wrap gap-4 mb-3">
-                                    <label class="inline-flex items-center"><input type="radio" name="expense_option" value="no" checked class="form-radio text-indigo-600"> <span class="ml-2">ไม่เบิกค่าใช้จ่าย</span></label>
-                                    <label class="inline-flex items-center"><input type="radio" name="expense_option" value="partial" class="form-radio text-indigo-600"> <span class="ml-2">เบิกบางส่วน</span></label>
-                                    </div>
                                 
-                                <div id="expense-details" class="hidden pl-4 border-l-2 border-indigo-200">
-                                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-2">
-                                        <label class="inline-flex items-center"><input type="checkbox" class="expense-item-check form-checkbox" value="ค่าเบี้ยเลี้ยง"> <span class="ml-2 text-sm">ค่าเบี้ยเลี้ยง</span></label>
-                                        <label class="inline-flex items-center"><input type="checkbox" class="expense-item-check form-checkbox" value="ค่าที่พัก"> <span class="ml-2 text-sm">ค่าที่พัก</span></label>
-                                        <label class="inline-flex items-center"><input type="checkbox" class="expense-item-check form-checkbox" value="ค่าพาหนะ"> <span class="ml-2 text-sm">ค่าพาหนะ</span></label>
-                                        <label class="inline-flex items-center"><input type="checkbox" class="expense-item-check form-checkbox" value="ค่าลงทะเบียน"> <span class="ml-2 text-sm">ค่าลงทะเบียน</span></label>
-                                    </div>
-                                    <div class="mb-2">
-                                        <label class="block text-sm">อื่นๆ (ระบุ)</label>
-                                        <input type="text" id="expense-other-detail" class="form-input text-sm" placeholder="เช่น ค่าวัสดุ...">
-                                    </div>
-                                    <div class="mb-2">
-                                        <label class="block text-sm font-semibold">รวมเป็นเงินทั้งสิ้น (บาท)</label>
-                                        <input type="number" id="form-total-expense" class="form-input w-48" placeholder="0.00">
+                                <div class="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                                    <div id="form-attendees-list" class="space-y-3 min-h-[50px]">
+                                        <p class="text-center text-gray-400 text-sm italic py-2" id="no-attendees-msg">ยังไม่มีรายชื่อผู้ร่วมเดินทาง (นอกจากผู้ขอ)</p>
                                     </div>
                                 </div>
                             </div>
 
-                            <div class="border-t pt-4">
-                                <label class="label-text text-lg mb-2 block">พาหนะเดินทาง</label>
-                                <div class="space-y-2">
-                                    <label class="inline-flex items-center"><input type="checkbox" name="vehicle_option" value="private" class="vehicle-checkbox form-checkbox text-indigo-600"> <span class="ml-2">รถส่วนตัว (ระบุทะเบียน)</span></label>
-                                    <input type="text" id="form-license-plate" class="form-input mt-1 hidden" placeholder="เช่น กก 1234 สระแก้ว">
+                            <div class="space-y-4">
+                                <h3 class="text-sm font-bold text-gray-500 uppercase tracking-wider border-b pb-1">5. งบประมาณ</h3>
+                                <div class="flex flex-wrap gap-6 mb-3">
+                                    <label class="inline-flex items-center cursor-pointer">
+                                        <input type="radio" name="expense_option" value="no" checked class="form-radio text-indigo-600 focus:ring-indigo-500 h-4 w-4"> 
+                                        <span class="ml-2">ไม่เบิกค่าใช้จ่าย</span>
+                                    </label>
+                                    <label class="inline-flex items-center cursor-pointer">
+                                        <input type="radio" name="expense_option" value="partial" class="form-radio text-indigo-600 focus:ring-indigo-500 h-4 w-4"> 
+                                        <span class="ml-2">เบิกบางส่วน</span>
+                                    </label>
+                                </div>
+                                
+                                <div id="expense-details" class="hidden pl-4 border-l-4 border-indigo-100 bg-gray-50 p-4 rounded-r-lg">
+                                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                                        <label class="inline-flex items-center"><input type="checkbox" class="expense-item-check form-checkbox text-indigo-600 rounded" value="ค่าเบี้ยเลี้ยง"> <span class="ml-2 text-sm">ค่าเบี้ยเลี้ยง</span></label>
+                                        <label class="inline-flex items-center"><input type="checkbox" class="expense-item-check form-checkbox text-indigo-600 rounded" value="ค่าที่พัก"> <span class="ml-2 text-sm">ค่าที่พัก</span></label>
+                                        <label class="inline-flex items-center"><input type="checkbox" class="expense-item-check form-checkbox text-indigo-600 rounded" value="ค่าพาหนะ"> <span class="ml-2 text-sm">ค่าพาหนะ</span></label>
+                                        <label class="inline-flex items-center"><input type="checkbox" class="expense-item-check form-checkbox text-indigo-600 rounded" value="ค่าลงทะเบียน"> <span class="ml-2 text-sm">ค่าลงทะเบียน</span></label>
+                                        <label class="inline-flex items-center"><input type="checkbox" class="expense-item-check form-checkbox text-indigo-600 rounded" value="ค่าน้ำมัน"> <span class="ml-2 text-sm">ค่าน้ำมัน</span></label>
+                                        <label class="inline-flex items-center"><input type="checkbox" class="expense-item-check form-checkbox text-indigo-600 rounded" value="ค่าใช้จ่ายอื่นๆ"> <span class="ml-2 text-sm">อื่นๆ</span></label>
+                                    </div>
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label class="block text-sm mb-1">รายละเอียดอื่นๆ (ถ้ามี)</label>
+                                            <input type="text" id="expense-other-detail" class="w-full p-2 border border-gray-300 rounded text-sm" placeholder="ระบุรายละเอียด...">
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-semibold mb-1">รวมเป็นเงินทั้งสิ้น (บาท)</label>
+                                            <input type="number" id="form-total-expense" class="w-full p-2 border border-gray-300 rounded bg-white font-bold text-right" placeholder="0.00">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="space-y-4">
+                                <h3 class="text-sm font-bold text-gray-500 uppercase tracking-wider border-b pb-1">6. พาหนะเดินทาง</h3>
+                                <div class="space-y-3 pl-2">
+                                    <div class="flex items-center">
+                                        <input type="radio" name="vehicle_option" value="private" id="veh-private" class="form-radio text-indigo-600 focus:ring-indigo-500 h-4 w-4">
+                                        <label for="veh-private" class="ml-2 cursor-pointer">รถส่วนตัว</label>
+                                        <input type="text" id="form-license-plate" class="ml-4 p-1 border-b border-gray-300 focus:border-indigo-500 outline-none text-sm w-48 hidden" placeholder="ระบุเลขทะเบียน (เช่น กก 1234)">
+                                    </div>
                                     
-                                    <div class="block"></div>
-                                    <label class="inline-flex items-center"><input type="checkbox" name="vehicle_option" value="gov" class="vehicle-checkbox form-checkbox text-indigo-600"> <span class="ml-2">รถราชการ</span></label>
+                                    <div class="flex items-center">
+                                        <input type="radio" name="vehicle_option" value="gov" id="veh-gov" class="form-radio text-indigo-600 focus:ring-indigo-500 h-4 w-4">
+                                        <label for="veh-gov" class="ml-2 cursor-pointer">รถราชการ</label>
+                                    </div>
                                     
-                                    <div class="block"></div>
-                                    <label class="inline-flex items-center"><input type="checkbox" name="vehicle_option" value="public" class="vehicle-checkbox form-checkbox text-indigo-600"> <span class="ml-2">รถโดยสารประจำทาง</span></label>
+                                    <div class="flex items-center">
+                                        <input type="radio" name="vehicle_option" value="public" id="veh-public" class="form-radio text-indigo-600 focus:ring-indigo-500 h-4 w-4">
+                                        <label for="veh-public" class="ml-2 cursor-pointer">รถโดยสารประจำทาง</label>
+                                    </div>
                                 </div>
                             </div>
                             
                             <input type="hidden" id="form-head-name">
 
-                            <div class="pt-6 flex gap-3 justify-end">
-                                <button type="button" onclick="switchPage('dashboard-page')" class="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">ยกเลิก</button>
-                                <button type="submit" id="form-submit-btn" class="px-8 py-2 bg-indigo-600 text-white font-bold rounded-lg shadow hover:bg-indigo-700">บันทึกและส่งคำขอ</button>
+                            <div class="pt-8 flex gap-3 justify-end border-t mt-4">
+                                <button type="button" onclick="switchPage('dashboard-page')" class="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium transition">
+                                    ยกเลิก
+                                </button>
+                                <button type="submit" id="form-submit-btn" class="px-8 py-3 bg-indigo-600 text-white font-bold rounded-lg shadow-md hover:bg-indigo-700 hover:shadow-lg transition transform hover:-translate-y-0.5 flex items-center gap-2">
+                                    <span>บันทึกและส่งคำขอ</span>
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                                </button>
                             </div>
                         </form>
                     </div>
                 </div>
 
                 <div id="profile-page" class="page-view hidden animate-fade-in">
-                    <div class="bg-white rounded-xl shadow-sm border p-6 max-w-2xl mx-auto">
-                        <h2 class="text-2xl font-bold mb-6 text-gray-800 border-b pb-2">ข้อมูลส่วนตัว</h2>
-                        <form id="profile-form" class="space-y-4">
-                            <div class="grid grid-cols-1 gap-4">
-                                <div><label class="label-text">ชื่อ-นามสกุล</label><input type="text" id="profile-fullname" class="form-input"></div>
-                                <div><label class="label-text">ตำแหน่ง</label><input type="text" id="profile-position" class="form-input"></div>
-                                <div><label class="label-text">กลุ่มสาระฯ/ฝ่าย</label><input type="text" id="profile-department" class="form-input"></div>
-                                <div><label class="label-text">อีเมล</label><input type="email" id="profile-email" class="form-input"></div>
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 max-w-2xl mx-auto">
+                        <div class="flex items-center gap-4 mb-6 border-b pb-4">
+                            <div class="h-16 w-16 bg-indigo-100 rounded-full flex items-center justify-center text-3xl">👤</div>
+                            <div>
+                                <h2 class="text-2xl font-bold text-gray-800">ข้อมูลส่วนตัว</h2>
+                                <p class="text-sm text-gray-500">จัดการข้อมูลและรหัสผ่านของคุณ</p>
                             </div>
-                            <button type="submit" class="mt-4 w-full bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700">บันทึกข้อมูล</button>
+                        </div>
+
+                        <form id="profile-form" class="space-y-5">
+                            <div class="grid grid-cols-1 gap-5">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">ชื่อ-นามสกุล</label>
+                                    <input type="text" id="profile-fullname" class="w-full p-2 border border-gray-300 rounded bg-gray-50">
+                                </div>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">ตำแหน่ง</label>
+                                        <input type="text" id="profile-position" class="w-full p-2 border border-gray-300 rounded bg-gray-50">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">กลุ่มสาระฯ/ฝ่าย</label>
+                                        <input type="text" id="profile-department" class="w-full p-2 border border-gray-300 rounded bg-gray-50">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">อีเมล (ถ้ามี)</label>
+                                    <input type="email" id="profile-email" class="w-full p-2 border border-gray-300 rounded bg-gray-50">
+                                </div>
+                            </div>
+                            <div class="flex justify-end">
+                                <button type="submit" class="bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700 font-medium">บันทึกข้อมูล</button>
+                            </div>
                         </form>
                         
-                        <div class="mt-8 pt-6 border-t">
-                            <h3 class="font-bold text-gray-700 mb-4">เปลี่ยนรหัสผ่าน</h3>
-                            <form id="password-form" class="space-y-4">
-                                <input type="password" id="current-password" placeholder="รหัสผ่านปัจจุบัน" class="form-input">
-                                <input type="password" id="new-password" placeholder="รหัสผ่านใหม่" class="form-input">
-                                <div class="flex items-center">
-                                    <input type="checkbox" id="show-password-toggle" class="mr-2"> <label for="show-password-toggle" class="text-sm">แสดงรหัสผ่าน</label>
+                        <div class="mt-8 pt-6 border-t border-gray-100">
+                            <h3 class="font-bold text-gray-800 mb-4 flex items-center gap-2">
+                                <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                                เปลี่ยนรหัสผ่าน
+                            </h3>
+                            <form id="password-form" class="space-y-4 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                                <input type="password" id="current-password" placeholder="รหัสผ่านปัจจุบัน" class="w-full p-2 border border-gray-300 rounded">
+                                <input type="password" id="new-password" placeholder="รหัสผ่านใหม่" class="w-full p-2 border border-gray-300 rounded">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center">
+                                        <input type="checkbox" id="show-password-toggle" class="mr-2 h-4 w-4 text-indigo-600 rounded"> 
+                                        <label for="show-password-toggle" class="text-sm text-gray-600 cursor-pointer">แสดงรหัสผ่าน</label>
+                                    </div>
+                                    <button type="submit" class="bg-gray-800 text-white px-4 py-2 rounded-lg hover:bg-gray-900 text-sm">ยืนยันเปลี่ยนรหัส</button>
                                 </div>
-                                <button type="submit" class="w-full bg-gray-800 text-white py-2 rounded-lg hover:bg-gray-900">เปลี่ยนรหัสผ่าน</button>
                             </form>
                         </div>
                     </div>
@@ -266,78 +375,121 @@
             </main>
         </div>
 
-        <div class="md:hidden fixed bottom-0 w-full bg-white border-t border-gray-200 flex justify-around py-2 px-2 z-40 shadow-lg">
-            <button class="nav-button flex flex-col items-center p-2 rounded-lg w-full text-gray-500 active:text-indigo-600 active" data-target="dashboard-page">
-                <span class="text-xl mb-1">🏠</span> <span class="text-[10px]">หน้าหลัก</span>
+        <div class="md:hidden fixed bottom-0 w-full bg-white border-t border-gray-200 flex justify-around py-2 px-2 z-40 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+            <button class="nav-button flex flex-col items-center p-2 rounded-lg w-full text-gray-500 active:text-indigo-600 active:bg-indigo-50 transition active" data-target="dashboard-page">
+                <span class="text-2xl mb-0.5">🏠</span> 
+                <span class="text-[10px] font-medium">หน้าหลัก</span>
             </button>
-            <button class="nav-button flex flex-col items-center p-2 rounded-lg w-full text-gray-500 active:text-indigo-600" data-target="form-page">
-                <span class="text-xl mb-1">📝</span> <span class="text-[10px]">เขียนคำขอ</span>
+            <button class="nav-button flex flex-col items-center p-2 rounded-lg w-full text-gray-500 active:text-indigo-600 active:bg-indigo-50 transition" data-target="form-page">
+                <div class="bg-indigo-600 text-white rounded-full p-2 -mt-6 shadow-lg border-4 border-white">
+                    <span class="text-xl">✍️</span>
+                </div>
+                <span class="text-[10px] font-medium mt-1">เขียนคำขอ</span>
             </button>
-            <button class="nav-button flex flex-col items-center p-2 rounded-lg w-full text-gray-500 active:text-indigo-600" data-target="profile-page">
-                <span class="text-xl mb-1">👤</span> <span class="text-[10px]">โปรไฟล์</span>
+            <button class="nav-button flex flex-col items-center p-2 rounded-lg w-full text-gray-500 active:text-indigo-600 active:bg-indigo-50 transition" data-target="profile-page">
+                <span class="text-2xl mb-0.5">👤</span> 
+                <span class="text-[10px] font-medium">โปรไฟล์</span>
             </button>
         </div>
     </div>
 
-    <div id="register-modal" class="modal hidden fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
-        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
-            <div class="bg-indigo-600 p-4 flex justify-between items-center">
-                <h3 class="text-white font-bold text-lg">ลงทะเบียนผู้ใช้งานใหม่</h3>
-                <button id="register-modal-close-button" class="text-white hover:text-gray-200 text-xl">&times;</button>
+    <div id="register-modal" class="modal hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 backdrop-blur-sm transition-opacity duration-300">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all scale-100">
+            <div class="bg-indigo-600 p-5 flex justify-between items-center">
+                <h3 class="text-white font-bold text-lg flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path></svg>
+                    ลงทะเบียนผู้ใช้งานใหม่
+                </h3>
+                <button class="modal-close text-white/80 hover:text-white text-2xl font-light focus:outline-none">&times;</button>
             </div>
             <form id="register-form" class="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
-                <div><label class="label-text">ชื่อผู้ใช้ (Login Name)</label><input type="text" id="reg-username" class="form-input" required></div>
-                <div><label class="label-text">รหัสผ่าน</label><input type="password" id="reg-password" class="form-input" required></div>
-                <div><label class="label-text">ชื่อ-นามสกุลจริง</label><input type="text" id="reg-fullname" class="form-input" required></div>
-                <div><label class="label-text">ตำแหน่ง</label><input type="text" id="reg-position" class="form-input" required></div>
-                <div><label class="label-text">กลุ่มสาระฯ</label>
-                    <select id="reg-department" class="form-input">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">ชื่อผู้ใช้ (สำหรับ Login) <span class="text-red-500">*</span></label>
+                    <input type="text" id="reg-username" class="w-full p-2 border border-gray-300 rounded focus:ring-indigo-500 focus:border-indigo-500" required>
+                    <p class="text-xs text-gray-500 mt-1">ใช้อักษรภาษาอังกฤษหรือตัวเลข</p>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">รหัสผ่าน <span class="text-red-500">*</span></label>
+                    <input type="password" id="reg-password" class="w-full p-2 border border-gray-300 rounded focus:ring-indigo-500 focus:border-indigo-500" required>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">ชื่อ-นามสกุลจริง (ภาษาไทย) <span class="text-red-500">*</span></label>
+                    <input type="text" id="reg-fullname" class="w-full p-2 border border-gray-300 rounded focus:ring-indigo-500 focus:border-indigo-500" placeholder="นาย/นาง/นางสาว..." required>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">ตำแหน่ง <span class="text-red-500">*</span></label>
+                    <input type="text" id="reg-position" class="w-full p-2 border border-gray-300 rounded focus:ring-indigo-500 focus:border-indigo-500" placeholder="ครู, ครูผู้ช่วย, ..." required>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">กลุ่มสาระฯ/ฝ่าย</label>
+                    <select id="reg-department" class="w-full p-2 border border-gray-300 rounded focus:ring-indigo-500 focus:border-indigo-500">
                         <option value="กลุ่มบริหารวิชาการ">กลุ่มบริหารวิชาการ</option>
+                        <option value="กลุ่มบริหารงบประมาณ">กลุ่มบริหารงบประมาณ</option>
+                        <option value="กลุ่มบริหารงานบุคคล">กลุ่มบริหารงานบุคคล</option>
+                        <option value="กลุ่มบริหารทั่วไป">กลุ่มบริหารทั่วไป</option>
                         <option value="กลุ่มสาระการเรียนรู้ภาษาไทย">กลุ่มสาระฯ ภาษาไทย</option>
+                        <option value="กลุ่มสาระการเรียนรู้คณิตศาสตร์">กลุ่มสาระฯ คณิตศาสตร์</option>
+                        <option value="กลุ่มสาระการเรียนรู้วิทยาศาสตร์และเทคโนโลยี">กลุ่มสาระฯ วิทยาศาสตร์และเทคโนโลยี</option>
+                        <option value="กลุ่มสาระการเรียนรู้สังคมศึกษา ศาสนา และวัฒนธรรม">กลุ่มสาระฯ สังคมศึกษาฯ</option>
+                        <option value="กลุ่มสาระการเรียนรู้สุขศึกษาและพลศึกษา">กลุ่มสาระฯ สุขศึกษาและพลศึกษา</option>
+                        <option value="กลุ่มสาระการเรียนรู้ศิลปะ">กลุ่มสาระฯ ศิลปะ</option>
+                        <option value="กลุ่มสาระการเรียนรู้การงานอาชีพ">กลุ่มสาระฯ การงานอาชีพ</option>
+                        <option value="กลุ่มสาระการเรียนรู้ภาษาต่างประเทศ">กลุ่มสาระฯ ภาษาต่างประเทศ</option>
+                        <option value="กิจกรรมพัฒนาผู้เรียน">กิจกรรมพัฒนาผู้เรียน</option>
                         <option value="อื่นๆ">อื่นๆ</option>
                     </select>
                 </div>
-                <button type="submit" id="register-submit-button" class="w-full bg-green-600 text-white py-3 rounded-lg font-bold hover:bg-green-700 mt-4">ลงทะเบียน</button>
+                <button type="submit" id="register-submit-button" class="w-full bg-green-600 text-white py-3 rounded-lg font-bold hover:bg-green-700 mt-4 shadow-md transition">ลงทะเบียน</button>
             </form>
         </div>
     </div>
 
-    <div id="alert-modal" class="modal hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div class="bg-white p-6 rounded-xl shadow-xl max-w-sm w-full mx-4 text-center">
-            <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-indigo-100 mb-4">
-                <span class="text-2xl">📢</span>
+    <div id="alert-modal" class="modal hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div class="bg-white p-6 rounded-2xl shadow-2xl max-w-sm w-full mx-4 text-center transform transition-all scale-100">
+            <div class="mx-auto flex items-center justify-center h-14 w-14 rounded-full bg-indigo-100 mb-4 animate-bounce-short">
+                <span class="text-3xl">📢</span>
             </div>
-            <h3 id="alert-modal-title" class="text-lg font-bold mb-2 text-gray-900">แจ้งเตือน</h3>
-            <p id="alert-modal-message" class="text-gray-600 mb-6 text-sm"></p>
-            <button id="alert-modal-ok-button" class="w-full bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition">ตกลง</button>
+            <h3 id="alert-modal-title" class="text-xl font-bold mb-2 text-gray-900">แจ้งเตือน</h3>
+            <p id="alert-modal-message" class="text-gray-600 mb-6 text-sm leading-relaxed"></p>
+            <button id="alert-modal-ok-button" class="w-full bg-indigo-600 text-white px-4 py-3 rounded-xl hover:bg-indigo-700 transition font-medium shadow-sm">ตกลง</button>
         </div>
     </div>
     
-    <div id="send-memo-modal" class="modal hidden fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
-        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
-            <h3 class="text-lg font-bold mb-4 text-indigo-800">ส่งบันทึกข้อความ (Upload)</h3>
+    <div id="send-memo-modal" class="modal hidden fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 transform transition-all">
+            <div class="flex justify-between items-center mb-4 pb-2 border-b">
+                <h3 class="text-lg font-bold text-indigo-800 flex items-center gap-2">
+                    <span>📤</span> ส่งบันทึกข้อความ
+                </h3>
+                <button class="modal-close text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+            </div>
+            
             <form id="send-memo-form" class="space-y-4">
                 <input type="hidden" id="memo-modal-request-id">
                 
-                <div class="flex gap-4 mb-4">
-                    <label class="flex items-center cursor-pointer">
-                        <input type="radio" name="modal_memo_type" value="upload" checked class="form-radio text-indigo-600">
-                        <span class="ml-2 text-sm">ส่งไฟล์บันทึก</span>
-                    </label>
-                    <label class="flex items-center cursor-pointer">
-                        <input type="radio" name="modal_memo_type" value="reimburse" class="form-radio text-indigo-600">
-                        <span class="ml-2 text-sm">ส่งเรื่องเบิกจ่าย (ไม่ต้องแนบไฟล์)</span>
-                    </label>
+                <div class="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                    <p class="text-xs text-gray-500 mb-2 font-bold uppercase">เลือกประเภทการส่ง</p>
+                    <div class="space-y-2">
+                        <label class="flex items-center cursor-pointer p-2 hover:bg-white rounded transition">
+                            <input type="radio" name="modal_memo_type" value="upload" checked class="form-radio text-indigo-600 focus:ring-indigo-500">
+                            <span class="ml-2 text-sm font-medium">ส่งไฟล์บันทึก (PDF/รูปภาพ)</span>
+                        </label>
+                        <label class="flex items-center cursor-pointer p-2 hover:bg-white rounded transition">
+                            <input type="radio" name="modal_memo_type" value="reimburse" class="form-radio text-indigo-600 focus:ring-indigo-500">
+                            <span class="ml-2 text-sm font-medium">ส่งเรื่องเบิกจ่าย (ไปราชการเสร็จสิ้น)</span>
+                        </label>
+                    </div>
                 </div>
 
-                <div id="modal-memo-file-container">
-                    <label class="label-text">เลือกไฟล์ PDF/รูปภาพ</label>
-                    <input type="file" id="modal-memo-file" accept=".pdf,.jpg,.png" class="form-input">
+                <div id="modal-memo-file-container" class="space-y-2">
+                    <label class="block text-sm font-medium text-gray-700">อัปโหลดไฟล์ (PDF หรือ รูปภาพ)</label>
+                    <input type="file" id="modal-memo-file" accept=".pdf,.jpg,.jpeg,.png" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer">
+                    <p class="text-xs text-gray-400">ขนาดไม่เกิน 5MB</p>
                 </div>
 
-                <div class="flex justify-end gap-2 mt-6">
-                    <button type="button" id="send-memo-cancel-button" class="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300 text-gray-700">ยกเลิก</button>
-                    <button type="submit" id="send-memo-submit-button" class="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-bold">ยืนยันการส่ง</button>
+                <div class="flex justify-end gap-3 mt-6 pt-4 border-t">
+                    <button type="button" class="modal-close px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700 text-sm font-medium transition">ยกเลิก</button>
+                    <button type="submit" id="send-memo-submit-button" class="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-bold text-sm shadow-md transition">ยืนยันการส่ง</button>
                 </div>
             </form>
         </div>
