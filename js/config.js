@@ -49,7 +49,7 @@ try {
 }
 
 // 4. Google Apps Script URL (Backend เดิม)
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzmMmfyQ1ofO5SOH__MFMr2vTV86D5gyErSQj9HdnnpU_VoHQXNfI8b2FkRJxXNNGyY/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzP-HCQGbA3Xi2Ms4DXTGy8k17Bv72pFohnJ0txAePjjXybe6pK42mSaYOfTQ5V9Q6mDA/exec";
 
 // Global State
 let allRequestsCache = [];
