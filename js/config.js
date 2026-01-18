@@ -19,7 +19,17 @@ const firebaseConfig = {
   messagingSenderId: "1046709727117",
   appId: "1:1046709727117:web:25570ee363e3a821a397c4"
 };
-
+// 5. Cloud Run Configuration (PDF Engine)
+const PDF_ENGINE_CONFIG = {
+    BASE_URL: "https://pdf-engine-660310608742.asia-southeast1.run.app", // URL เดิมของคุณ
+    TIMEOUT: 15000, // เวลาสูงสุดที่รอได้ (15 วินาที)
+    TEMPLATES: {
+        COMMAND_SOLO: 'template_command_solo.docx',
+        COMMAND_SMALL: 'template_command_small.docx',
+        COMMAND_LARGE: 'template_command_large.docx',
+        DISPATCH: 'template_dispatch.docx'
+    }
+};
 // 3. Initialize Firebase & Hybrid Mode
 let db = null; // ตัวแปรฐานข้อมูล Global
 const USE_FIREBASE = true; // เปิดใช้งานระบบ Hybrid
