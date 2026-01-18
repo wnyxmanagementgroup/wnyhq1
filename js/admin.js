@@ -812,3 +812,37 @@ function addAdminAttendeeField(name = '', position = '') {
     `;
     list.appendChild(div);
 }
+// --- เพิ่มต่อท้ายไฟล์ admin.js ---
+
+// ฟังก์ชันแสดงผลลัพธ์ 2 ปุ่ม (Google Doc และ PDF)
+function showDualLinkResult(containerId, title, docUrl, pdfUrl) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    
+    // สร้าง HTML แสดงปุ่ม
+    container.innerHTML = `
+        <h3 class="font-bold text-lg text-green-800">${title}</h3>
+        <p class="mt-2 text-gray-700">ดำเนินการเสร็จสิ้น ท่านสามารถเลือกเปิดไฟล์ได้ 2 รูปแบบ:</p>
+        
+        <div class="flex justify-center flex-wrap gap-4 mt-6">
+            ${docUrl ? `
+            <a href="${docUrl}" target="_blank" class="btn bg-blue-600 hover:bg-blue-700 text-white shadow-md flex items-center gap-2 px-6 py-2">
+                📝 แก้ไขใน Google Doc
+            </a>` : ''}
+            
+            ${pdfUrl ? `
+            <a href="${pdfUrl}" target="_blank" class="btn bg-red-600 hover:bg-red-700 text-white shadow-md flex items-center gap-2 px-6 py-2">
+                📄 เปิดไฟล์ PDF
+            </a>` : ''}
+        </div>
+        
+        <div class="mt-4">
+            <button onclick="switchPage('command-generation-page')" class="btn bg-gray-500 text-white btn-sm">กลับหน้าจัดการ</button>
+        </div>
+    `;
+    
+    container.classList.remove('hidden');
+    
+    // เลื่อนหน้าจอลงมาให้เห็นผลลัพธ์
+    container.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
