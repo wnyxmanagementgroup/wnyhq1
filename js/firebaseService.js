@@ -225,13 +225,19 @@ async function loginWithFirebase(username, password) {
  * ฟังก์ชันสำหรับ Admin กดเพื่อดูดข้อมูลจาก Google Sheet มาลง Firebase ทั้งหมด
  * (Requests + Memos Status)
  */
+// --- แก้ไขไฟล์ js/firebaseService.js ---
+
+/**
+ * ฟังก์ชันสำหรับ Admin กดเพื่อดูดข้อมูลจาก Google Sheet มาลง Firebase ทั้งหมด
+ * (ฉบับปรับปรุง: เพิ่มระบบลบข้อมูลที่ไม่อยู่ใน Sheet ออกจาก Firebase)
+ */
 async function syncAllDataFromSheetToFirebase() {
     if (typeof db === 'undefined' || !db || !USE_FIREBASE) return;
 
     try {
-        console.log("🔄 Start Syncing Requests...");
+        console.log("🔄 Start Syncing Requests (Full Sync)...");
         
-        // 1. ดึงข้อมูลทั้งหมดจาก Google Sheets (รอนานหน่อยรอบนี้)
+        // 1. ดึงข้อมูลทั้งหมดจาก Google Sheets
         const [requestsRes, memosRes] = await Promise.all([
             apiCall('GET', 'getAllRequests'),
             apiCall('GET', 'getAllMemos')
@@ -239,50 +245,63 @@ async function syncAllDataFromSheetToFirebase() {
 
         if (requestsRes.status !== 'success') throw new Error("ดึงข้อมูล Requests ไม่สำเร็จ");
 
-        const requests = requestsRes.data;
+        const requests = requestsRes.data || [];
         const memos = memosRes.data || [];
 
-        // 2. เตรียม Batch Write (เขียนทีละ 500 รายการ ตามลิมิต Firebase)
+        // ⚠️ [ส่วนที่เพิ่มใหม่] 2. ตรวจสอบและลบข้อมูลเก่าใน Firebase ที่ไม่มีใน Sheets แล้ว
+        // เก็บรายชื่อ ID จาก Sheets ไว้ใน Set เพื่อความเร็วในการค้นหา
+        const sheetIds = new Set(requests.map(r => r.id ? r.id.replace(/\//g, '-') : null).filter(id => id !== null));
+        
+        const firebaseSnapshot = await db.collection('requests').get();
+        const deleteBatch = db.batch();
+        let deleteCount = 0;
+
+        firebaseSnapshot.forEach(doc => {
+            // ถ้า ID ใน Firebase ไม่พบใน Sheets แสดงว่าคือข้อมูลขยะที่ต้องลบ
+            if (!sheetIds.has(doc.id)) {
+                deleteBatch.delete(doc.ref);
+                deleteCount++;
+            }
+        });
+
+        // ถ้ามีรายการต้องลบ ให้ทำการลบก่อน
+        if (deleteCount > 0) {
+            await deleteBatch.commit();
+            console.log(`🗑️ Cleanup: Deleted ${deleteCount} old records from Firebase.`);
+        }
+
+        // 3. (Logic เดิม) อัปเดตข้อมูลจาก Sheets ลง Firebase
         const batchSize = 500;
         let batch = db.batch();
         let count = 0;
         let totalUpdated = 0;
 
         for (const req of requests) {
-            // ข้ามถ้าไม่มี ID
             if (!req.id) continue;
 
-            // หา Memo ที่เกี่ยวข้อง
             const relatedMemo = memos.find(m => m.refNumber === req.id);
             
-            // แปลงวันที่ String เป็น Date Object
             const parseDate = (d) => {
                 if (!d) return null;
                 const date = new Date(d);
                 return isNaN(date.getTime()) ? null : date;
             };
             
-            // สร้าง ID (แปลง / เป็น -)
             const docId = req.id.replace(/\//g, '-'); 
             const docRef = db.collection('requests').doc(docId);
 
-            // เตรียมข้อมูลและ Sanitize (ป้องกัน undefined)
             const dataToSave = {
                 ...req,
                 timestamp: parseDate(req.timestamp) || new Date(),
                 startDate: safeVal(req.startDate), 
                 docDate: safeVal(req.docDate),
-                
-                // รวมข้อมูลสถานะ Memo เข้าไปเลย
                 memoStatus: relatedMemo ? safeVal(relatedMemo.status) : null,
                 completedMemoUrl: relatedMemo ? safeVal(relatedMemo.completedMemoUrl) : null,
                 completedCommandUrl: relatedMemo ? safeVal(relatedMemo.completedCommandUrl) : null,
                 dispatchBookUrl: relatedMemo ? safeVal(relatedMemo.dispatchBookUrl) : null,
-                
                 isSynced: true
             };
 
-            // Double check: ลูปแก้ undefined ในทุก field
             Object.keys(dataToSave).forEach(key => {
                 if (dataToSave[key] === undefined) {
                     dataToSave[key] = null;
@@ -293,7 +312,6 @@ async function syncAllDataFromSheetToFirebase() {
             count++;
             totalUpdated++;
 
-            // ถ้าครบ 500 ให้ commit แล้วเริ่ม batch ใหม่
             if (count >= batchSize) {
                 await batch.commit();
                 batch = db.batch();
@@ -301,20 +319,18 @@ async function syncAllDataFromSheetToFirebase() {
             }
         }
 
-        // Commit ที่เหลือ
         if (count > 0) {
             await batch.commit();
         }
 
-        console.log(`✅ Sync Requests Complete: ${totalUpdated} records.`);
-        return { status: 'success', message: `ซิงค์ข้อมูลเสร็จสิ้น ${totalUpdated} รายการ` };
+        console.log(`✅ Sync Requests Complete: Updated ${totalUpdated}, Deleted ${deleteCount}.`);
+        return { status: 'success', message: `ซิงค์ข้อมูลเสร็จสิ้น (อัปเดต ${totalUpdated}, ลบ ${deleteCount} รายการ)` };
 
     } catch (error) {
         console.error("Sync Error:", error);
         return { status: 'error', message: error.message };
     }
 }
-
 /**
  * ฟังก์ชัน Sync Users จาก Google Sheet ลง Firebase
  */
