@@ -191,10 +191,10 @@ async function handleAdminGenerateCommand() {
 
 // --- ค้นหาฟังก์ชัน generateOfficialPDF เดิมใน admin.js แล้วแทนที่ด้วยโค้ดนี้ ---
 
-// --- แก้ไขไฟล์ js/admin.js (ฟังก์ชัน generateOfficialPDF ฉบับปรับปรุง) ---
+// --- แก้ไขไฟล์ js/admin.js (ฟังก์ชัน generateOfficialPDF ฉบับสมบูรณ์) ---
 
 async function generateOfficialPDF(requestData) {
-    // 1. ระบุปุ่มที่จะแสดง Loader
+    // 1. ระบุปุ่มที่จะแสดง Loader (เพื่อให้ User รู้ว่าระบบกำลังทำงาน)
     let btnId = 'generate-document-button'; 
     if (requestData.doctype === 'dispatch') btnId = 'dispatch-submit-button';
     if (requestData.doctype === 'command') btnId = 'admin-generate-command-button';
@@ -202,9 +202,11 @@ async function generateOfficialPDF(requestData) {
     toggleLoader(btnId, true); 
 
     try {
-        // --- ส่วนเตรียมข้อมูล (Data Preparation) ให้ตรงกับแม่แบบ ---
+        // ==========================================
+        // ส่วนที่ 1: เตรียมข้อมูล (Data Preparation)
+        // ==========================================
         
-        // 1.1 แปลงวันที่เอกสารเป็น เดือน (MMMM) และ ปี (YYYY)
+        // 1.1 แปลงวันที่เอกสารเป็นภาษาไทย
         const thaiMonths = [
             "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
             "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"
@@ -212,13 +214,14 @@ async function generateOfficialPDF(requestData) {
         
         const docDateObj = requestData.docDate ? new Date(requestData.docDate) : new Date();
         const docMMMM = thaiMonths[docDateObj.getMonth()];
-        const docYYYY = (docDateObj.getFullYear() + 543).toString(); // ปี พ.ศ.
+        const docYYYY = (docDateObj.getFullYear() + 543).toString();
 
-        // 1.2 สร้างข้อความช่วงวันเดินทาง (date_range) เช่น "วันที่ 1-3 มกราคม 2569"
+        // 1.2 สร้างข้อความช่วงวันเดินทาง (date_range)
         let dateRangeStr = "";
         if (requestData.startDate && requestData.endDate) {
             const start = new Date(requestData.startDate);
             const end = new Date(requestData.endDate);
+            
             const startDay = start.getDate();
             const endDay = end.getDate();
             const startMonth = thaiMonths[start.getMonth()];
@@ -226,41 +229,40 @@ async function generateOfficialPDF(requestData) {
             const year = start.getFullYear() + 543;
 
             if (requestData.startDate === requestData.endDate) {
-                // วันเดียว
                 dateRangeStr = `ในวันที่ ${startDay} เดือน ${startMonth} พ.ศ. ${year}`;
             } else if (start.getMonth() === end.getMonth()) {
-                // เดือนเดียวกัน
                 dateRangeStr = `ระหว่างวันที่ ${startDay} - ${endDay} เดือน ${startMonth} พ.ศ. ${year}`;
             } else {
-                // ข้ามเดือน
                 dateRangeStr = `ระหว่างวันที่ ${startDay} เดือน ${startMonth} ถึงวันที่ ${endDay} เดือน ${endMonth} พ.ศ. ${year}`;
             }
         }
 
         // 1.3 เตรียมรายชื่อผู้ร่วมเดินทาง (เพิ่มลำดับที่ i)
-        // แม่แบบใช้: {#attendees}{{i}},{{name}},{{position}}{/attendees}
         const attendeesWithIndex = (requestData.attendees || []).map((att, index) => ({
-            i: index + 1, // เพิ่มลำดับที่ (เริ่มจาก 1)
-            name: att.name,
-            position: att.position
+            i: index + 1,
+            name: att.name || "",
+            position: att.position || ""
         }));
 
-        // --- จบส่วนเตรียมข้อมูล ---
+        // ==========================================
+        // ส่วนที่ 2: โหลดและจัดการแม่แบบ (Template)
+        // ==========================================
 
-        // 2. เลือกไฟล์แม่แบบ
+        // 2.1 เลือกชื่อไฟล์แม่แบบ
         let templateFilename = '';
         if (requestData.doctype === 'command') {
-            if (requestData.templateType === 'solo') templateFilename = 'template_command_solo.docx';
-            else if (requestData.templateType === 'groupSmall') templateFilename = 'template_command_small.docx';
-            else if (requestData.templateType === 'groupLarge') templateFilename = 'template_command_large.docx';
-            else templateFilename = 'template_command_solo.docx';
+            switch (requestData.templateType) {
+                case 'groupSmall': templateFilename = 'template_command_small.docx'; break;
+                case 'groupLarge': templateFilename = 'template_command_large.docx'; break;
+                default: templateFilename = 'template_command_solo.docx'; break;
+            }
         } else if (requestData.doctype === 'dispatch') {
             templateFilename = 'template_dispatch.docx';
         }
 
         console.log(`📂 กำลังโหลดแม่แบบ: ${templateFilename}`);
 
-        // 3. โหลดไฟล์แม่แบบ
+        // 2.2 โหลดไฟล์จาก Server
         const response = await fetch(`./${templateFilename}`);
         if (!response.ok) {
             throw new Error(`ไม่พบไฟล์แม่แบบ "${templateFilename}" กรุณาตรวจสอบว่าอัปโหลดไฟล์แล้ว`);
@@ -268,56 +270,75 @@ async function generateOfficialPDF(requestData) {
         
         const content = await response.arrayBuffer();
 
-        // 4. หยอดข้อมูลลง Word (Client-side Templating)
+        // 2.3 เริ่มต้นระบบ Word Engine (PizZip + Docxtemplater)
         const zip = new PizZip(content);
+        
         const doc = new window.docxtemplater(zip, {
             paragraphLoop: true,
             linebreaks: true,
+            
+            // ★ ฟีเจอร์ผ่อนปรน (Lenient Parser): ช่วยแก้ปัญหาโค้ดสี/ฟอนต์แทรกในตัวแปร
+            parser: function(tag) {
+                // ลบช่องว่างและอักขระแปลกปลอมออกจากชื่อตัวแปร
+                const cleanTag = tag.trim().replace(/^\s+|\s+$/g, '');
+                
+                return {
+                    get: function(scope, context) {
+                        if (cleanTag === '.') return scope;
+                        return scope[cleanTag];
+                    }
+                };
+            }
         });
 
-        // ✅ MAP ข้อมูลให้ตรงกับ Template 100%
-        const dataToRender = {
-            // วันที่และเลขที่
-            YYYY: docYYYY,         // ตรงกับ {{YYYY}}
-            MMMM: docMMMM,         // ตรงกับ {{MMMM}}
-            
-            // ข้อมูลเนื้อหา
-            purpose: requestData.purpose,       // ตรงกับ {{purpose}}
-            location: requestData.location,     // ตรงกับ {{location}}
-            date_range: dateRangeStr,           // ตรงกับ {{date_range}}
-            
-            // ผู้ขอ (สำหรับคำสั่งเดี่ยว)
-            requesterName: requestData.requesterName, // ตรงกับ {{requesterName}}
+        // ==========================================
+        // ส่วนที่ 3: แทนที่ข้อมูล (Rendering)
+        // ==========================================
 
-            // ตารางรายชื่อ (สำหรับคำสั่งกลุ่ม)
-            attendees: attendeesWithIndex,      // ตรงกับ {#attendees}...{/attendees}
-            
-            // หนังสือส่ง (Dispatch)
-            dispatch_month: requestData.dispatchMonth, // ตรงกับ {{dispatch_month}}
-            dispatch_year: requestData.dispatchYear,   // ตรงกับ {{dispatch_year}}
-            command_count: requestData.commandCount,   // ตรงกับ {{command_count}}
-            memo_count: requestData.memoCount          // ตรงกับ {{memo_count}}
+        // ข้อมูลที่จะส่งเข้าไปแทนที่ใน Word
+        const dataToRender = {
+            YYYY: docYYYY,
+            MMMM: docMMMM,
+            purpose: requestData.purpose || "",
+            location: requestData.location || "",
+            date_range: dateRangeStr,
+            requesterName: requestData.requesterName || "",
+            attendees: attendeesWithIndex, // ตารางรายชื่อ
+            dispatch_month: requestData.dispatchMonth || "",
+            dispatch_year: requestData.dispatchYear || "",
+            command_count: requestData.commandCount || "",
+            memo_count: requestData.memoCount || ""
         };
 
-        console.log("Data rendering:", dataToRender); // ดู Log เพื่อ Debug
+        console.log("Data rendering:", dataToRender);
 
+        // สั่งทำงานแทนที่ข้อมูล
         doc.render(dataToRender);
 
-        // 5. สร้างไฟล์ Blob
+        // ==========================================
+        // ส่วนที่ 4: สร้าง PDF (Cloud Run)
+        // ==========================================
+
+        // 4.1 สร้างไฟล์ Word (.docx) ที่สมบูรณ์
         const docxBlob = doc.getZip().generate({
             type: "blob",
             mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         });
 
-        // 6. ส่งไปแปลงที่ Cloud Run
+        // 4.2 เตรียมส่งไปแปลงเป็น PDF
         const formData = new FormData();
         formData.append("files", docxBlob, "document.docx");
 
-        // ใช้ Config ถ้ามี หรือ Hardcode ถ้าจำเป็น
-        const cloudRunBaseUrl = (typeof PDF_ENGINE_CONFIG !== 'undefined') ? PDF_ENGINE_CONFIG.BASE_URL : "https://pdf-engine-660310608742.asia-southeast1.run.app";
+        // ตรวจสอบ URL ของ PDF Engine (ใช้ Config ถ้ามี หรือใช้ Default)
+        const cloudRunBaseUrl = (typeof PDF_ENGINE_CONFIG !== 'undefined') 
+            ? PDF_ENGINE_CONFIG.BASE_URL 
+            : "https://pdf-engine-660310608742.asia-southeast1.run.app";
         
+        // ตั้งเวลา Timeout 20 วินาที (ป้องกันการรอนานเกินไป)
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 วินาที
+        const timeoutId = setTimeout(() => controller.abort(), 20000); 
+
+        console.log("🚀 กำลังส่งไปแปลงเป็น PDF...");
 
         const cloudRunResponse = await fetch(`${cloudRunBaseUrl}/forms/libreoffice/convert`, {
             method: "POST",
@@ -328,10 +349,10 @@ async function generateOfficialPDF(requestData) {
         clearTimeout(timeoutId);
 
         if (!cloudRunResponse.ok) {
-            throw new Error(`Server Error (${cloudRunResponse.status}) แปลงไฟล์ไม่สำเร็จ`);
+            throw new Error(`Server Error (${cloudRunResponse.status}) - แปลงไฟล์ไม่สำเร็จ`);
         }
 
-        // 7. เปิด PDF
+        // 4.3 เปิดไฟล์ PDF
         const pdfBlob = await cloudRunResponse.blob();
         const pdfUrl = window.URL.createObjectURL(pdfBlob);
         window.open(pdfUrl, '_blank');
@@ -339,13 +360,28 @@ async function generateOfficialPDF(requestData) {
     } catch (error) {
         console.error("PDF Generation Error:", error);
         
-        // จัดการ Error เรื่อง Template โดยเฉพาะ
+        // ==========================================
+        // ส่วนที่ 5: แจ้งเตือนข้อผิดพลาด (Error Handling)
+        // ==========================================
         if (error.properties && error.properties.errors) {
-            const errorMessages = error.properties.errors.map(e => `Tag: {${e.properties.id}} - ${e.message}`).join('\n');
-            alert(`❌ แม่แบบ Word ผิดพลาด (ชื่อตัวแปรไม่ตรง):\n${errorMessages}`);
+            // กรณีเป็น Error จากไฟล์ Template (เช่น ปีกกาซ้อนกัน)
+            const errorMessages = error.properties.errors.map(e => {
+                let msg = e.message;
+                // แปล Error ให้อ่านง่าย
+                if (msg.includes("Duplicate open tag")) return `- พบปีกกาเปิด {{ ซ้ำกัน (กรุณาลบแล้วพิมพ์ใหม่)`;
+                if (msg.includes("Duplicate close tag")) return `- พบปีกกาปิด }} ซ้ำกัน`;
+                if (msg.includes("Unclosed tag")) return `- ลืมปิดปีกกา }}`;
+                if (msg.includes("Multi error")) return `- มีข้อผิดพลาดหลายจุดใน Template`;
+                return `- ${msg} (Tag: ${e.properties.id || 'ไม่ระบุ'})`;
+            }).join('\n');
+            
+            alert(`❌ ไฟล์แม่แบบ Word ผิดพลาด:\n${errorMessages}\n\nคำแนะนำ: ให้เปิดไฟล์ Word แล้วลบตัวแปรที่มีปัญหาทิ้ง แล้วพิมพ์ใหม่ด้วยมือ`);
         } else {
+            // กรณี Error อื่นๆ (เน็ตหลุด, Server ล่ม)
             let msg = error.message;
-            if (error.name === 'AbortError') msg = "การเชื่อมต่อหมดเวลา (Timeout)";
+            if (error.name === 'AbortError') msg = "การเชื่อมต่อหมดเวลา (Timeout) - ระบบ PDF ทำงานหนัก กรุณาลองใหม่";
+            if (msg.includes('Failed to fetch')) msg = "ไม่สามารถเชื่อมต่อ Server แปลงไฟล์ได้ (ตรวจสอบอินเทอร์เน็ต)";
+            
             alert(`❌ เกิดข้อผิดพลาด: ${msg}`);
         }
         
@@ -353,7 +389,6 @@ async function generateOfficialPDF(requestData) {
         toggleLoader(btnId, false);
     }
 }
-
 // ... (ส่วน Render และ User Management ให้คงไว้ตามเดิม หรือ Copy จากไฟล์เดิมมาต่อท้าย) ...
 // --- RENDER FUNCTIONS ---
 
