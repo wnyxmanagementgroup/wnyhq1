@@ -191,6 +191,8 @@ async function handleAdminGenerateCommand() {
 
 // --- ค้นหาฟังก์ชัน generateOfficialPDF เดิมใน admin.js แล้วแทนที่ด้วยโค้ดนี้ ---
 
+// --- แก้ไขไฟล์ js/admin.js (ฟังก์ชัน generateOfficialPDF ฉบับปรับปรุง) ---
+
 async function generateOfficialPDF(requestData) {
     // 1. ระบุปุ่มที่จะแสดง Loader
     let btnId = 'generate-document-button'; 
@@ -200,81 +202,136 @@ async function generateOfficialPDF(requestData) {
     toggleLoader(btnId, true); 
 
     try {
-        // 2. เลือกไฟล์แม่แบบจาก Config (ลดการ Hardcode)
-        let templateFilename = '';
-        const T = PDF_ENGINE_CONFIG.TEMPLATES; // ดึงจาก Config
+        // --- ส่วนเตรียมข้อมูล (Data Preparation) ให้ตรงกับแม่แบบ ---
+        
+        // 1.1 แปลงวันที่เอกสารเป็น เดือน (MMMM) และ ปี (YYYY)
+        const thaiMonths = [
+            "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
+            "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"
+        ];
+        
+        const docDateObj = requestData.docDate ? new Date(requestData.docDate) : new Date();
+        const docMMMM = thaiMonths[docDateObj.getMonth()];
+        const docYYYY = (docDateObj.getFullYear() + 543).toString(); // ปี พ.ศ.
 
+        // 1.2 สร้างข้อความช่วงวันเดินทาง (date_range) เช่น "วันที่ 1-3 มกราคม 2569"
+        let dateRangeStr = "";
+        if (requestData.startDate && requestData.endDate) {
+            const start = new Date(requestData.startDate);
+            const end = new Date(requestData.endDate);
+            const startDay = start.getDate();
+            const endDay = end.getDate();
+            const startMonth = thaiMonths[start.getMonth()];
+            const endMonth = thaiMonths[end.getMonth()];
+            const year = start.getFullYear() + 543;
+
+            if (requestData.startDate === requestData.endDate) {
+                // วันเดียว
+                dateRangeStr = `ในวันที่ ${startDay} เดือน ${startMonth} พ.ศ. ${year}`;
+            } else if (start.getMonth() === end.getMonth()) {
+                // เดือนเดียวกัน
+                dateRangeStr = `ระหว่างวันที่ ${startDay} - ${endDay} เดือน ${startMonth} พ.ศ. ${year}`;
+            } else {
+                // ข้ามเดือน
+                dateRangeStr = `ระหว่างวันที่ ${startDay} เดือน ${startMonth} ถึงวันที่ ${endDay} เดือน ${endMonth} พ.ศ. ${year}`;
+            }
+        }
+
+        // 1.3 เตรียมรายชื่อผู้ร่วมเดินทาง (เพิ่มลำดับที่ i)
+        // แม่แบบใช้: {#attendees}{{i}},{{name}},{{position}}{/attendees}
+        const attendeesWithIndex = (requestData.attendees || []).map((att, index) => ({
+            i: index + 1, // เพิ่มลำดับที่ (เริ่มจาก 1)
+            name: att.name,
+            position: att.position
+        }));
+
+        // --- จบส่วนเตรียมข้อมูล ---
+
+        // 2. เลือกไฟล์แม่แบบ
+        let templateFilename = '';
         if (requestData.doctype === 'command') {
-            if (requestData.templateType === 'solo') templateFilename = T.COMMAND_SOLO;
-            else if (requestData.templateType === 'groupSmall') templateFilename = T.COMMAND_SMALL;
-            else if (requestData.templateType === 'groupLarge') templateFilename = T.COMMAND_LARGE;
-            else templateFilename = T.COMMAND_SOLO;
+            if (requestData.templateType === 'solo') templateFilename = 'template_command_solo.docx';
+            else if (requestData.templateType === 'groupSmall') templateFilename = 'template_command_small.docx';
+            else if (requestData.templateType === 'groupLarge') templateFilename = 'template_command_large.docx';
+            else templateFilename = 'template_command_solo.docx';
         } else if (requestData.doctype === 'dispatch') {
-            templateFilename = T.DISPATCH;
+            templateFilename = 'template_dispatch.docx';
         }
 
         console.log(`📂 กำลังโหลดแม่แบบ: ${templateFilename}`);
 
-        // 3. โหลดไฟล์แม่แบบจาก Server
+        // 3. โหลดไฟล์แม่แบบ
         const response = await fetch(`./${templateFilename}`);
         if (!response.ok) {
-            throw new Error(`ไม่พบไฟล์แม่แบบ "${templateFilename}" บน Server`);
+            throw new Error(`ไม่พบไฟล์แม่แบบ "${templateFilename}" กรุณาตรวจสอบว่าอัปโหลดไฟล์แล้ว`);
         }
         
         const content = await response.arrayBuffer();
 
-        // 4. แทนที่ข้อมูล (Client-side Templating)
+        // 4. หยอดข้อมูลลง Word (Client-side Templating)
         const zip = new PizZip(content);
         const doc = new window.docxtemplater(zip, {
             paragraphLoop: true,
             linebreaks: true,
         });
 
-        // Map ข้อมูลเข้ากับตัวแปรใน Word
-        doc.render({
-            doc_no: requestData.id || "รอออกเลข",
-            date: formatDisplayDate(requestData.docDate),
-            requester: requestData.requesterName,
-            position: requestData.requesterPosition,
-            department: requestData.department,
-            purpose: requestData.purpose,
-            location: requestData.location,
-            start_date: formatDisplayDate(requestData.startDate),
-            end_date: formatDisplayDate(requestData.endDate),
-            dispatch_month: requestData.dispatchMonth,
-            dispatch_year: requestData.dispatchYear,
-            command_count: requestData.commandCount,
-            memo_count: requestData.memoCount,
-            attendees: requestData.attendees || [] 
-        });
+        // ✅ MAP ข้อมูลให้ตรงกับ Template 100%
+        const dataToRender = {
+            // วันที่และเลขที่
+            YYYY: docYYYY,         // ตรงกับ {{YYYY}}
+            MMMM: docMMMM,         // ตรงกับ {{MMMM}}
+            
+            // ข้อมูลเนื้อหา
+            purpose: requestData.purpose,       // ตรงกับ {{purpose}}
+            location: requestData.location,     // ตรงกับ {{location}}
+            date_range: dateRangeStr,           // ตรงกับ {{date_range}}
+            
+            // ผู้ขอ (สำหรับคำสั่งเดี่ยว)
+            requesterName: requestData.requesterName, // ตรงกับ {{requesterName}}
 
+            // ตารางรายชื่อ (สำหรับคำสั่งกลุ่ม)
+            attendees: attendeesWithIndex,      // ตรงกับ {#attendees}...{/attendees}
+            
+            // หนังสือส่ง (Dispatch)
+            dispatch_month: requestData.dispatchMonth, // ตรงกับ {{dispatch_month}}
+            dispatch_year: requestData.dispatchYear,   // ตรงกับ {{dispatch_year}}
+            command_count: requestData.commandCount,   // ตรงกับ {{command_count}}
+            memo_count: requestData.memoCount          // ตรงกับ {{memo_count}}
+        };
+
+        console.log("Data rendering:", dataToRender); // ดู Log เพื่อ Debug
+
+        doc.render(dataToRender);
+
+        // 5. สร้างไฟล์ Blob
         const docxBlob = doc.getZip().generate({
             type: "blob",
             mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         });
 
-        // 5. ส่งไปแปลงเป็น PDF ที่ Cloud Run (พร้อม Timeout)
+        // 6. ส่งไปแปลงที่ Cloud Run
         const formData = new FormData();
         formData.append("files", docxBlob, "document.docx");
 
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), PDF_ENGINE_CONFIG.TIMEOUT);
-
-        console.log("🚀 กำลังส่งไปแปลง PDF ที่ Cloud Run...");
+        // ใช้ Config ถ้ามี หรือ Hardcode ถ้าจำเป็น
+        const cloudRunBaseUrl = (typeof PDF_ENGINE_CONFIG !== 'undefined') ? PDF_ENGINE_CONFIG.BASE_URL : "https://pdf-engine-660310608742.asia-southeast1.run.app";
         
-        const cloudRunResponse = await fetch(`${PDF_ENGINE_CONFIG.BASE_URL}/forms/libreoffice/convert`, {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 วินาที
+
+        const cloudRunResponse = await fetch(`${cloudRunBaseUrl}/forms/libreoffice/convert`, {
             method: "POST",
             body: formData,
             signal: controller.signal
         });
 
-        clearTimeout(timeoutId); 
+        clearTimeout(timeoutId);
 
         if (!cloudRunResponse.ok) {
-            throw new Error(`Server Error (${cloudRunResponse.status}): แปลงไฟล์ไม่สำเร็จ`);
+            throw new Error(`Server Error (${cloudRunResponse.status}) แปลงไฟล์ไม่สำเร็จ`);
         }
 
-        // 6. เปิดไฟล์ PDF
+        // 7. เปิด PDF
         const pdfBlob = await cloudRunResponse.blob();
         const pdfUrl = window.URL.createObjectURL(pdfBlob);
         window.open(pdfUrl, '_blank');
@@ -282,11 +339,15 @@ async function generateOfficialPDF(requestData) {
     } catch (error) {
         console.error("PDF Generation Error:", error);
         
-        let msg = error.message;
-        if (error.name === 'AbortError') msg = "การเชื่อมต่อหมดเวลา (Timeout) - ระบบอาจทำงานหนัก";
-        if (msg.includes('Failed to fetch')) msg = "ไม่สามารถเชื่อมต่อ Server แปลงไฟล์ได้";
-
-        alert(`❌ เกิดข้อผิดพลาด: ${msg}`);
+        // จัดการ Error เรื่อง Template โดยเฉพาะ
+        if (error.properties && error.properties.errors) {
+            const errorMessages = error.properties.errors.map(e => `Tag: {${e.properties.id}} - ${e.message}`).join('\n');
+            alert(`❌ แม่แบบ Word ผิดพลาด (ชื่อตัวแปรไม่ตรง):\n${errorMessages}`);
+        } else {
+            let msg = error.message;
+            if (error.name === 'AbortError') msg = "การเชื่อมต่อหมดเวลา (Timeout)";
+            alert(`❌ เกิดข้อผิดพลาด: ${msg}`);
+        }
         
     } finally {
         toggleLoader(btnId, false);
