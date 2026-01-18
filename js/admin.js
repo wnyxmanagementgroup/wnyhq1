@@ -95,94 +95,134 @@ function calculateDuration(start, end) {
 // --- GENERATE COMMAND FUNCTIONS ---
 
 // ฟังก์ชันหลักที่ปุ่มกดเรียกใช้
+// --- แก้ไขในไฟล์ js/admin.js ---
+
+// 1. แก้ไขฟังก์ชัน handleAdminGenerateCommand
 async function handleAdminGenerateCommand() {
-    // 1. ดึงข้อมูลจากฟอร์มหน้าเว็บ
     const requestId = document.getElementById('admin-command-request-id').value;
     const commandType = document.querySelector('input[name="admin-command-type"]:checked')?.value;
     
-    if (!commandType) { 
-        showAlert('ผิดพลาด', 'กรุณาเลือกรูปแบบคำสั่ง'); 
-        return; 
-    }
+    if (!commandType) { showAlert('ผิดพลาด', 'กรุณาเลือกรูปแบบคำสั่ง'); return; }
     
-    // ดึงรายชื่อผู้ร่วมเดินทาง (พร้อมลำดับที่)
+    // เตรียมข้อมูล (เหมือนเดิม)
     const attendees = [];
-    document.querySelectorAll('#admin-command-attendees-list > div').forEach((div, index) => {
+    document.querySelectorAll('#admin-command-attendees-list > div').forEach(div => {
         const name = div.querySelector('.admin-att-name').value.trim();
         const pos = div.querySelector('.admin-att-pos').value.trim();
-        // เพิ่ม index + 1 เพื่อให้ใน Word แสดงลำดับเลข 1, 2, 3...
-        if (name) attendees.push({ i: index + 1, name: name, position: pos });
+        if (name) attendees.push({ name, position: pos });
     });
     
-    // เริ่มทำงาน (หมุน Loader)
+    const requestData = {
+        doctype: 'command',
+        templateType: commandType,
+        id: requestId, 
+        docDate: document.getElementById('admin-command-doc-date').value,
+        requesterName: document.getElementById('admin-command-requester-name').value.trim(), 
+        requesterPosition: document.getElementById('admin-command-requester-position').value.trim(),
+        location: document.getElementById('admin-command-location').value.trim(), 
+        purpose: document.getElementById('admin-command-purpose').value.trim(),
+        startDate: document.getElementById('admin-command-start-date').value, 
+        endDate: document.getElementById('admin-command-end-date').value,
+        attendees: attendees, 
+        // ... (ข้อมูลอื่นๆ)
+        expenseOption: document.getElementById('admin-expense-option').value,
+        expenseItems: document.getElementById('admin-expense-items').value, 
+        totalExpense: document.getElementById('admin-total-expense').value,
+        vehicleOption: document.getElementById('admin-vehicle-option').value, 
+        licensePlate: document.getElementById('admin-license-plate').value
+    };
+    
+    // ★ เปลี่ยนมาใช้ระบบ Hybrid GAS ★
     toggleLoader('admin-generate-command-button', true);
     
     try {
-        // เตรียมข้อมูลดิบ (Raw Data)
-        const rawData = {
-            requestId: requestId,
-            templateType: commandType,
-            docDate: document.getElementById('admin-command-doc-date').value,
-            requesterName: document.getElementById('admin-command-requester-name').value.trim(),
-            requesterPosition: document.getElementById('admin-command-requester-position').value.trim(),
-            location: document.getElementById('admin-command-location').value.trim(),
-            purpose: document.getElementById('admin-command-purpose').value.trim(),
-            startDate: document.getElementById('admin-command-start-date').value,
-            endDate: document.getElementById('admin-command-end-date').value,
-            attendees: attendees,
-            // ข้อมูล Hidden Fields (ค่าใช้จ่าย/พาหนะ)
-            expenseOption: document.getElementById('admin-expense-option').value,
-            expenseItems: document.getElementById('admin-expense-items').value,
-            totalExpense: document.getElementById('admin-total-expense').value,
-            vehicleOption: document.getElementById('admin-vehicle-option').value,
-            licensePlate: document.getElementById('admin-license-plate').value
-        };
-
-        // ------------------------------------------------------------------
-        // ส่วนที่ 1: บันทึกข้อมูลลง Google Sheets (ผ่าน GAS)
-        // ------------------------------------------------------------------
-        console.log("Saving to Google Sheets...");
-        const saveResult = await apiCall('POST', 'approveCommand', rawData);
+        // เรียกฟังก์ชันใหม่ใน firebaseService.js
+        const result = await generateCommandHybrid(requestData);
         
-        if (saveResult.status !== 'success') {
-            throw new Error(saveResult.message || "บันทึกข้อมูลลง Google Sheets ไม่สำเร็จ");
+        if (result.status === 'success') {
+            showAlert('สำเร็จ', 'สร้างคำสั่งเรียบร้อยแล้ว');
+            
+            // แสดงผลลัพธ์ 2 ลิงก์ (Doc และ PDF)
+            showDualLinkResult(
+                'admin-command-result', 
+                'สร้างคำสั่งสำเร็จ!', 
+                result.data.docUrl, 
+                result.data.pdfUrl
+            );
         }
-
-        // ------------------------------------------------------------------
-        // ส่วนที่ 2: เตรียมข้อมูลให้ตรงกับ Template Word และสร้าง PDF
-        // ------------------------------------------------------------------
-        console.log("Generating PDF...");
-        
-        const pdfRequestData = {
-            doctype: 'command', // บอกว่าเป็นคำสั่ง
-            templateType: commandType, // solo, groupSmall, groupLarge
-            id: requestId,
-            ...rawData // รวมข้อมูลดิบไปด้วย
-        };
-        
-        // เรียกฟังก์ชันสร้าง PDF (ตัวเก่งของเรา)
-        await generateOfficialPDF(pdfRequestData);
-
-        // ------------------------------------------------------------------
-        // ส่วนที่ 3: อัปเดตหน้าจอเมื่อเสร็จ
-        // ------------------------------------------------------------------
-        document.getElementById('admin-command-result-title').textContent = 'บันทึกและสร้างคำสั่งสำเร็จ!';
-        document.getElementById('admin-command-result-message').textContent = 'บันทึกข้อมูลลงระบบเรียบร้อยแล้ว (ไฟล์ PDF จะเปิดในแท็บใหม่)';
-        
-        // ซ่อนฟอร์ม แสดงผลลัพธ์
-        document.getElementById('admin-command-form').classList.add('hidden');
-        document.getElementById('admin-command-result').classList.remove('hidden');
-        
-        // ล้าง Cache เพื่อให้ข้อมูลในตารางอัปเดต
-        clearRequestsCache();
-        
     } catch (error) {
         console.error(error);
-        showAlert('ข้อผิดพลาด', error.message);
+        showAlert('ผิดพลาด', 'ไม่สามารถสร้างคำสั่งได้: ' + error.message);
     } finally {
-        // ปิด Loader
         toggleLoader('admin-generate-command-button', false);
     }
+}
+
+// 2. แก้ไขฟังก์ชัน handleDispatchFormSubmit
+async function handleDispatchFormSubmit(e) {
+    e.preventDefault();
+    const requestId = document.getElementById('dispatch-request-id').value;
+    
+    const requestData = {
+        doctype: 'dispatch',
+        id: requestId, 
+        dispatchMonth: document.getElementById('dispatch-month').value, 
+        dispatchYear: document.getElementById('dispatch-year').value, 
+        commandCount: document.getElementById('command-count').value, 
+        memoCount: document.getElementById('memo-count').value 
+    };
+    
+    toggleLoader('dispatch-submit-button', true);
+    
+    try {
+        // เรียกฟังก์ชันใหม่
+        const result = await generateDispatchHybrid(requestData);
+        
+        if (result.status === 'success') {
+            document.getElementById('dispatch-modal').style.display = 'none';
+            document.getElementById('dispatch-form').reset();
+            
+            // ใช้ Modal Alert หรือแสดงผลในหน้า Admin ก็ได้ (ในที่นี้ขอ Alert พร้อมปุ่มให้เลือก)
+            // หรือจะแสดงในหน้า Command Generation Page ก็ได้
+            
+            // เนื่องจากหน้า Dispatch เป็น Modal ซ้อน Modal ขอใช้ Alert ธรรมดาแจ้งก่อน
+            // แต่ถ้าต้องการให้แสดงลิงก์ ให้ใช้หน้าต่าง Result
+            showAlert('สำเร็จ', 'สร้างหนังสือส่งเรียบร้อยแล้ว กรุณาตรวจสอบลิงก์ในหน้าจัดการ');
+            
+            // รีโหลดข้อมูลเพื่อโชว์ปุ่มดูไฟล์
+            await fetchAllRequestsForCommand();
+        }
+    } catch (error) {
+        showAlert('ผิดพลาด', error.message);
+    } finally {
+        toggleLoader('dispatch-submit-button', false);
+    }
+}
+
+// 3. ฟังก์ชันช่วยแสดงผล 2 ปุ่ม (Doc & PDF)
+function showDualLinkResult(containerId, title, docUrl, pdfUrl) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    
+    container.innerHTML = `
+        <h3 class="font-bold text-lg text-green-800">${title}</h3>
+        <p class="mt-2 text-gray-700">ท่านสามารถเลือกเปิดไฟล์ได้ 2 รูปแบบ:</p>
+        <div class="flex justify-center flex-wrap gap-4 mt-4">
+            ${docUrl ? `
+            <a href="${docUrl}" target="_blank" class="btn bg-blue-600 hover:bg-blue-700 text-white shadow-md flex items-center gap-2">
+                📝 แก้ไขใน Google Doc
+            </a>` : ''}
+            
+            ${pdfUrl ? `
+            <a href="${pdfUrl}" target="_blank" class="btn bg-red-600 hover:bg-red-700 text-white shadow-md flex items-center gap-2">
+                📄 เปิดไฟล์ PDF
+            </a>` : ''}
+            
+            <button onclick="switchPage('command-generation-page')" class="btn bg-gray-500 text-white">กลับหน้าจัดการ</button>
+        </div>
+    `;
+    
+    container.classList.remove('hidden');
 }
 
 // ==========================================
