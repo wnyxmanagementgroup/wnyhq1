@@ -172,6 +172,13 @@
 
                 <button id="logout-button" class="btn btn-danger btn-sm">ออกจากระบบ</button>
             </div>
+            <div id="server-status-container" class="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-gray-50 border border-gray-200 text-xs">
+    <span class="relative flex h-2 w-2">
+      <span id="status-ping" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-gray-400 opacity-75"></span>
+      <span id="status-dot" class="relative inline-flex rounded-full h-2 w-2 bg-gray-500"></span>
+    </span>
+    <span id="server-status-text" class="font-medium text-gray-500">กำลังตรวจสอบระบบ...</span>
+</div>
         </header>
 
             <div id="navigation" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4 mb-6">
