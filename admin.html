@@ -4,105 +4,153 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WNY Admin - ระบบจัดการ (ผู้ดูแลระบบ)</title>
+    <link rel="icon" href="https://upload.wikimedia.org/wikipedia/commons/1/15/Wny-logo.png">
     
     <script src="js/admin-guard.js"></script>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.1/chart.min.js"></script>
+    
     <script src="https://unpkg.com/pizzip@3.1.4/dist/pizzip.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/docxtemplater/3.50.0/docxtemplater.js"></script>
     
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
+    
+    <style>
+        body { font-family: 'Sarabun', sans-serif; }
+        .page-view { transition: opacity 0.3s ease-in-out; }
+        /* Custom Scrollbar for sidebar */
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
 </head>
-<body class="bg-gray-100 min-h-screen font-['Sarabun'] text-gray-800">
+<body class="bg-gray-100 min-h-screen text-gray-800 flex flex-col">
 
-    <nav class="bg-indigo-900 text-white shadow-lg sticky top-0 z-50">
+    <nav class="bg-indigo-900 text-white shadow-lg sticky top-0 z-40">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between h-16">
                 <div class="flex items-center gap-3">
-                    <div class="bg-white/10 p-2 rounded-lg">
+                    <div class="bg-white/10 p-2 rounded-lg backdrop-blur-sm">
                         <span class="text-xl">🛡️</span>
                     </div>
                     <div class="flex flex-col">
-                        <span class="font-bold text-lg leading-tight">WNY Admin Console</span>
+                        <span class="font-bold text-lg leading-tight tracking-wide">WNY Admin Console</span>
                         <span class="text-xs text-indigo-300">แผงควบคุมผู้ดูแลระบบ</span>
                     </div>
                 </div>
+
                 <div class="flex items-center gap-4">
-                    <div id="server-status-container" class="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/20 text-xs backdrop-blur-sm">
-                        </div>
+                    <div id="server-status-container" class="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-black/20 border border-white/10 text-xs backdrop-blur-sm transition hover:bg-black/30 cursor-help" title="สถานะเซิร์ฟเวอร์ PDF">
+                         <span class="w-2 h-2 rounded-full bg-gray-400 animate-pulse"></span>
+                         <span class="text-gray-300">Connecting...</span>
+                    </div>
 
                     <div class="h-8 w-px bg-indigo-800 hidden sm:block"></div>
                     
-                    <div id="user-display" class="text-sm font-medium text-indigo-100 hidden sm:block">Admin</div>
-                    <button id="logout-button" class="bg-red-600 hover:bg-red-700 text-white px-4 py-1.5 rounded-md text-sm font-medium transition shadow-sm border border-red-500">
-                        ออกจากระบบ
-                    </button>
+                    <div class="flex items-center gap-3">
+                        <div class="text-right hidden sm:block">
+                            <div id="user-display" class="text-sm font-bold text-white">Admin</div>
+                            <div class="text-xs text-indigo-300">Administrator</div>
+                        </div>
+                        <button id="logout-button" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition shadow-sm border border-red-500 flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+                            ออก
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
     </nav>
 
-    <div class="flex h-[calc(100vh-4rem)] overflow-hidden">
+    <div class="flex flex-1 overflow-hidden h-[calc(100vh-4rem)]">
         
-        <aside class="w-64 bg-white shadow-lg z-20 hidden md:flex flex-col border-r border-gray-200">
-            <div class="p-4 space-y-1">
-                <div class="px-4 py-2 text-xs font-bold text-gray-400 uppercase tracking-wider">เมนูจัดการ</div>
-                <button class="nav-button w-full text-left px-4 py-3 rounded-lg hover:bg-indigo-50 text-gray-700 font-medium transition flex items-center gap-3 active" data-target="command-generation-page">
-                    <span>📋</span> จัดการคำขอ / ออกคำสั่ง
+        <aside class="w-64 bg-white shadow-xl z-30 hidden md:flex flex-col border-r border-gray-200">
+            <div class="p-4 space-y-1 overflow-y-auto scrollbar-hide flex-1">
+                <div class="px-4 py-2 text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">เมนูหลัก</div>
+                
+                <button class="nav-button w-full text-left px-4 py-3 rounded-lg hover:bg-indigo-50 text-gray-700 font-medium transition flex items-center gap-3 active group" data-target="command-generation-page">
+                    <span class="p-1.5 bg-indigo-100 text-indigo-600 rounded-md group-hover:bg-indigo-200 transition">📋</span> 
+                    จัดการคำขอ / ออกคำสั่ง
                 </button>
-                <button class="nav-button w-full text-left px-4 py-3 rounded-lg hover:bg-indigo-50 text-gray-700 font-medium transition flex items-center gap-3" data-target="admin-users-page">
-                    <span>👥</span> จัดการผู้ใช้งาน
+                
+                <button class="nav-button w-full text-left px-4 py-3 rounded-lg hover:bg-indigo-50 text-gray-700 font-medium transition flex items-center gap-3 group" data-target="admin-users-page">
+                    <span class="p-1.5 bg-green-100 text-green-600 rounded-md group-hover:bg-green-200 transition">👥</span> 
+                    จัดการผู้ใช้งาน
                 </button>
-                <button class="nav-button w-full text-left px-4 py-3 rounded-lg hover:bg-indigo-50 text-gray-700 font-medium transition flex items-center gap-3" data-target="stats-page">
-                    <span>📊</span> รายงานสถิติ
+                
+                <button class="nav-button w-full text-left px-4 py-3 rounded-lg hover:bg-indigo-50 text-gray-700 font-medium transition flex items-center gap-3 group" data-target="stats-page">
+                    <span class="p-1.5 bg-purple-100 text-purple-600 rounded-md group-hover:bg-purple-200 transition">📊</span> 
+                    รายงานสถิติ
+                </button>
+
+                <div class="border-t my-4 border-gray-100"></div>
+                
+                <div class="px-4 py-2 text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">เครื่องมือ</div>
+                <button id="admin-sync-btn-sidebar" class="w-full text-left px-4 py-3 rounded-lg hover:bg-gray-50 text-gray-600 font-medium transition flex items-center gap-3 text-sm">
+                    <span class="text-lg">🔄</span> Sync Data (Google Sheets)
                 </button>
             </div>
             
-            <div class="mt-auto p-4 border-t border-gray-100">
-                <div class="text-xs text-gray-400 text-center">WNY System v2.1 (Hybrid)</div>
+            <div class="p-4 bg-gray-50 border-t border-gray-200 text-center">
+                <p class="text-xs text-gray-500 font-semibold">WNY System v2.5 (Admin)</p>
+                <p class="text-[10px] text-gray-400">Secure Admin Panel</p>
             </div>
         </aside>
 
-        <main class="flex-1 p-6 overflow-y-auto bg-gray-100 relative">
+        <main class="flex-1 p-6 overflow-y-auto bg-gray-100 relative w-full">
             
             <div id="command-generation-page" class="page-view animate-fade-in">
-                <header class="flex justify-between items-center mb-6">
-                    <h2 class="text-2xl font-bold text-gray-800">จัดการคำขอไปราชการ</h2>
-                    <button id="admin-sync-btn" class="text-sm bg-white border border-gray-300 text-gray-600 px-3 py-2 rounded-lg hover:bg-gray-50 flex items-center gap-2 shadow-sm transition">
-                        <span>🔄</span> Sync Data
+                <header class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                    <div>
+                        <h2 class="text-2xl font-bold text-gray-800">จัดการคำขอไปราชการ</h2>
+                        <p class="text-sm text-gray-500">ตรวจสอบ อนุมัติ และออกหนังสือคำสั่ง</p>
+                    </div>
+                    <button id="admin-sync-btn" class="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 shadow-sm flex items-center gap-2 text-sm font-medium transition transform hover:scale-105">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                        Sync Data ล่าสุด
                     </button>
                 </header>
 
-                <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden min-h-[500px]">
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden min-h-[600px] flex flex-col">
                     <div class="flex border-b border-gray-200 bg-gray-50">
-                        <button id="admin-view-requests-tab" class="flex-1 px-6 py-4 font-bold text-indigo-600 border-b-2 border-indigo-600 bg-white">
-                            คำขอใหม่ / รออนุมัติ
+                        <button id="admin-view-requests-tab" class="flex-1 px-6 py-4 font-bold text-indigo-600 border-b-2 border-indigo-600 bg-white transition hover:bg-indigo-50">
+                            📥 คำขอใหม่ / รออนุมัติ
                         </button>
-                        <button id="admin-view-memos-tab" class="flex-1 px-6 py-4 text-gray-500 hover:text-indigo-600 hover:bg-gray-100 transition">
-                            บันทึกข้อความที่ส่งเข้ามา
+                        <button id="admin-view-memos-tab" class="flex-1 px-6 py-4 text-gray-500 hover:text-indigo-600 hover:bg-gray-100 transition border-b-2 border-transparent">
+                            📑 บันทึกข้อความที่ส่งเข้ามา
                         </button>
                     </div>
                     
-                    <div class="p-6">
-                        <div id="admin-requests-view">
+                    <div class="p-6 flex-1 bg-gray-50/50">
+                        <div id="admin-requests-view" class="h-full flex flex-col">
                             <div class="relative mb-4">
-                                <input type="text" id="admin-search-request" placeholder="ค้นหาชื่อ, เรื่อง, หรือเลขที่..." class="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-300">
-                                <span class="absolute left-3 top-2.5 text-gray-400">🔍</span>
+                                <input type="text" id="admin-search-request" placeholder="🔍 ค้นหาชื่อ, เรื่อง, หรือเลขที่เอกสาร..." class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-300 shadow-sm">
                             </div>
-                            <div id="admin-requests-list" class="space-y-3">
-                                <div class="text-center py-10 text-gray-400">กำลังโหลดรายการ...</div>
+                            <div id="admin-requests-list" class="space-y-3 flex-1 overflow-y-auto pr-2">
+                                <div class="text-center py-20">
+                                    <div class="loader-spinner mx-auto mb-3"></div>
+                                    <p class="text-gray-400">กำลังโหลดรายการคำขอ...</p>
+                                </div>
                             </div>
                         </div>
 
-                        <div id="admin-memos-view" class="hidden">
+                        <div id="admin-memos-view" class="hidden h-full flex flex-col">
                             <div class="flex justify-between items-center mb-4">
-                                <h3 class="font-bold text-gray-700">รายการบันทึกข้อความล่าสุด</h3>
-                                <button onclick="fetchAllMemos()" class="text-indigo-600 text-sm hover:underline">รีเฟรช</button>
+                                <h3 class="font-bold text-gray-700 flex items-center gap-2">
+                                    <span class="bg-indigo-100 text-indigo-600 p-1 rounded">📑</span> รายการบันทึกข้อความล่าสุด
+                                </h3>
+                                <button onclick="fetchAllMemos()" class="text-indigo-600 text-sm hover:underline flex items-center gap-1">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                                    รีเฟรช
+                                </button>
                             </div>
-                             <div id="admin-memos-list" class="space-y-3">
-                                 <div class="text-center py-10 text-gray-400">กำลังโหลดบันทึกข้อความ...</div>
+                             <div id="admin-memos-list" class="space-y-3 flex-1 overflow-y-auto pr-2">
+                                 <div class="text-center py-20">
+                                     <div class="loader-spinner mx-auto mb-3"></div>
+                                     <p class="text-gray-400">กำลังโหลดบันทึกข้อความ...</p>
+                                 </div>
                              </div>
                         </div>
                     </div>
@@ -110,122 +158,246 @@
             </div>
 
             <div id="admin-users-page" class="page-view hidden animate-fade-in">
-                <div class="flex justify-between items-center mb-6">
-                    <h2 class="text-2xl font-bold text-gray-800">จัดการผู้ใช้งานระบบ</h2>
-                    <div class="space-x-2">
-                        <button id="download-user-template-button" class="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300">โหลด Template</button>
-                        <button id="import-users-button" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">นำเข้า Excel</button>
-                        <input type="file" id="user-excel-input" accept=".xlsx, .xls" class="hidden">
-                        <button id="add-user-button" class="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700">+ เพิ่มผู้ใช้</button>
+                <header class="flex justify-between items-center mb-6">
+                    <div>
+                        <h2 class="text-2xl font-bold text-gray-800">จัดการผู้ใช้งานระบบ</h2>
+                        <p class="text-sm text-gray-500">เพิ่ม ลบ แก้ไข ข้อมูลครูและบุคลากร</p>
                     </div>
-                </div>
+                    <div class="flex gap-2">
+                        <button id="download-user-template-button" class="bg-white border border-gray-300 text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-50 text-sm">
+                            📥 โหลด Template
+                        </button>
+                        <div class="relative">
+                            <button id="import-users-button" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 text-sm font-medium shadow-sm flex items-center gap-2">
+                                📊 นำเข้า Excel
+                            </button>
+                            <input type="file" id="user-excel-input" accept=".xlsx, .xls" class="hidden">
+                        </div>
+                        <button id="add-user-button" class="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 text-sm font-medium shadow-sm flex items-center gap-2">
+                            <span>+</span> เพิ่มผู้ใช้ใหม่
+                        </button>
+                    </div>
+                </header>
                 
-                <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 overflow-x-auto">
-                    <div id="admin-users-list">
-                         <div class="text-center py-10 text-gray-400">กำลังโหลดรายชื่อ...</div>
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Username</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ชื่อ-สกุล</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ตำแหน่ง</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">กลุ่มสาระฯ</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">สิทธิ์</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">จัดการ</th>
+                                </tr>
+                            </thead>
+                            <tbody id="admin-users-list" class="bg-white divide-y divide-gray-200">
+                                <tr>
+                                    <td colspan="6" class="px-6 py-10 text-center text-gray-400">กำลังโหลดรายชื่อ...</td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
             
             <div id="stats-page" class="page-view hidden animate-fade-in">
-                 <div id="stats-overview"></div>
+                 <header class="mb-6">
+                    <h2 class="text-2xl font-bold text-gray-800">รายงานสถิติภาพรวม</h2>
+                    <p class="text-sm text-gray-500">สรุปข้อมูลการไปราชการประจำปีการศึกษา</p>
+                 </header>
+                 <div id="stats-overview" class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                     <div class="text-center py-10 text-gray-400">กำลังประมวลผลข้อมูล...</div>
+                 </div>
             </div>
 
         </main>
     </div>
 
-    <div id="command-approval-modal" class="modal hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-        <div class="bg-white w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-xl shadow-2xl flex flex-col">
-            <div class="bg-indigo-900 p-4 flex justify-between items-center sticky top-0 z-10">
-                <h3 class="text-white font-bold text-lg">อนุมัติและออกคำสั่งไปราชการ</h3>
-                <button id="command-approval-modal-close-button" class="text-white hover:text-gray-300 text-2xl">&times;</button>
+    <div id="command-approval-modal" class="modal hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white w-full max-w-6xl max-h-[95vh] overflow-hidden rounded-xl shadow-2xl flex flex-col border border-gray-700 animate-scale-in">
+            
+            <div class="bg-indigo-900 p-4 flex justify-between items-center shrink-0">
+                <div class="flex items-center gap-3">
+                    <span class="bg-white/20 p-1.5 rounded text-xl">📝</span>
+                    <div>
+                        <h3 class="text-white font-bold text-lg">อนุมัติและออกคำสั่งไปราชการ</h3>
+                        <p class="text-indigo-200 text-xs">ตรวจสอบความถูกต้องก่อนสร้างไฟล์ PDF</p>
+                    </div>
+                </div>
+                <button id="command-approval-modal-close-button" class="text-white/60 hover:text-white text-3xl font-light focus:outline-none">&times;</button>
             </div>
             
-            <div class="p-6 space-y-6 flex-1">
+            <div class="p-6 overflow-y-auto flex-1 bg-gray-50">
                 <form id="command-approval-form">
                     <input type="hidden" id="admin-command-request-id">
                     
-                    <div class="bg-indigo-50 p-4 rounded-lg border border-indigo-100">
-                        <label class="block font-bold text-indigo-900 mb-2">เลือกรูปแบบคำสั่ง</label>
-                        <div class="flex flex-wrap gap-4">
-                            <label class="flex items-center p-2 bg-white rounded border cursor-pointer hover:border-indigo-500">
-                                <input type="radio" name="admin-command-type" value="solo" checked class="text-indigo-600 focus:ring-indigo-500">
-                                <span class="ml-2 text-sm">คำสั่งเดี่ยว (1 คน)</span>
-                            </label>
-                            <label class="flex items-center p-2 bg-white rounded border cursor-pointer hover:border-indigo-500">
-                                <input type="radio" name="admin-command-type" value="groupSmall" class="text-indigo-600 focus:ring-indigo-500">
-                                <span class="ml-2 text-sm">คำสั่งกลุ่ม (เล็ก)</span>
-                            </label>
-                            <label class="flex items-center p-2 bg-white rounded border cursor-pointer hover:border-indigo-500">
-                                <input type="radio" name="admin-command-type" value="groupLarge" class="text-indigo-600 focus:ring-indigo-500">
-                                <span class="ml-2 text-sm">คำสั่งกลุ่ม (ใหญ่/แนบท้าย)</span>
-                            </label>
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div class="lg:col-span-1 space-y-4">
+                            <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+                                <label class="block font-bold text-indigo-900 mb-3 border-b pb-2">1. เลือกรูปแบบคำสั่ง</label>
+                                <div class="space-y-2">
+                                    <label class="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-indigo-50 transition peer-checked:border-indigo-500">
+                                        <input type="radio" name="admin-command-type" value="solo" checked class="text-indigo-600 focus:ring-indigo-500 h-4 w-4">
+                                        <div class="ml-3">
+                                            <span class="block text-sm font-medium text-gray-900">คำสั่งเดี่ยว (1 คน)</span>
+                                            <span class="block text-xs text-gray-500">ใช้สำหรับผู้ขอคนเดียว</span>
+                                        </div>
+                                    </label>
+                                    <label class="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-indigo-50 transition">
+                                        <input type="radio" name="admin-command-type" value="groupSmall" class="text-indigo-600 focus:ring-indigo-500 h-4 w-4">
+                                        <div class="ml-3">
+                                            <span class="block text-sm font-medium text-gray-900">คำสั่งกลุ่ม (เล็ก)</span>
+                                            <span class="block text-xs text-gray-500">มีรายชื่อในตัวคำสั่ง (ไม่เกิน 5-10 คน)</span>
+                                        </div>
+                                    </label>
+                                    <label class="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-indigo-50 transition">
+                                        <input type="radio" name="admin-command-type" value="groupLarge" class="text-indigo-600 focus:ring-indigo-500 h-4 w-4">
+                                        <div class="ml-3">
+                                            <span class="block text-sm font-medium text-gray-900">คำสั่งกลุ่ม (ใหญ่/แนบท้าย)</span>
+                                            <span class="block text-xs text-gray-500">มีบัญชีแนบท้ายแยกต่างหาก</span>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+                                <label class="block font-bold text-indigo-900 mb-3 border-b pb-2">2. วันที่ออกคำสั่ง</label>
+                                <div>
+                                    <label class="label-text">ณ วันที่</label>
+                                    <input type="date" id="admin-command-doc-date" class="form-input w-full">
+                                    <p class="text-xs text-gray-400 mt-1">วันที่ที่จะปรากฏบนหัวคำสั่ง</p>
+                                </div>
+                            </div>
                         </div>
-                    </div>
 
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
-                        <div><label class="label-text">วันที่ออกคำสั่ง (ณ วันที่)</label><input type="date" id="admin-command-doc-date" class="form-input"></div>
-                        <div><label class="label-text">ผู้ขออนุญาต</label><input type="text" id="admin-command-requester-name" class="form-input"></div>
-                        <div><label class="label-text">ตำแหน่ง</label><input type="text" id="admin-command-requester-position" class="form-input"></div>
-                        <div><label class="label-text">สถานที่</label><input type="text" id="admin-command-location" class="form-input"></div>
-                        <div class="md:col-span-2"><label class="label-text">เรื่อง/วัตถุประสงค์</label><input type="text" id="admin-command-purpose" class="form-input"></div>
-                        <div><label class="label-text">วันที่เริ่ม</label><input type="date" id="admin-command-start-date" class="form-input"></div>
-                        <div><label class="label-text">วันที่สิ้นสุด</label><input type="date" id="admin-command-end-date" class="form-input"></div>
-                    </div>
-                    
-                    <input type="hidden" id="admin-expense-option">
-                    <input type="hidden" id="admin-expense-items">
-                    <input type="hidden" id="admin-total-expense">
-                    <input type="hidden" id="admin-vehicle-option">
-                    <input type="hidden" id="admin-license-plate">
+                        <div class="lg:col-span-2 space-y-4">
+                            <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+                                <label class="block font-bold text-indigo-900 mb-3 border-b pb-2">3. ตรวจสอบและแก้ไขข้อมูล</label>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div class="col-span-1 md:col-span-2">
+                                        <label class="label-text">เรื่อง/วัตถุประสงค์</label>
+                                        <input type="text" id="admin-command-purpose" class="form-input w-full">
+                                    </div>
+                                    <div>
+                                        <label class="label-text">ผู้ขออนุญาต (หัวหน้าคณะ)</label>
+                                        <input type="text" id="admin-command-requester-name" class="form-input w-full">
+                                    </div>
+                                    <div>
+                                        <label class="label-text">ตำแหน่ง</label>
+                                        <input type="text" id="admin-command-requester-position" class="form-input w-full">
+                                    </div>
+                                    <div>
+                                        <label class="label-text">สถานที่</label>
+                                        <input type="text" id="admin-command-location" class="form-input w-full">
+                                    </div>
+                                    <div>
+                                        <label class="label-text">ช่วงเวลาเดินทาง</label>
+                                        <div class="flex gap-2">
+                                            <input type="date" id="admin-command-start-date" class="form-input w-full">
+                                            <span class="self-center">-</span>
+                                            <input type="date" id="admin-command-end-date" class="form-input w-full">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
 
-                    <div class="mt-6 border-t pt-4">
-                        <label class="label-text mb-2 block">รายชื่อผู้ร่วมเดินทาง (สามารถแก้ไข/ลบได้)</label>
-                        <div id="admin-command-attendees-list" class="space-y-2 bg-gray-50 p-3 rounded border"></div>
+                            <input type="hidden" id="admin-expense-option">
+                            <input type="hidden" id="admin-expense-items">
+                            <input type="hidden" id="admin-total-expense">
+                            <input type="hidden" id="admin-vehicle-option">
+                            <input type="hidden" id="admin-license-plate">
+
+                            <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+                                <div class="flex justify-between items-center mb-2 border-b pb-2">
+                                    <label class="block font-bold text-indigo-900">4. รายชื่อผู้ร่วมเดินทาง</label>
+                                    <button type="button" class="text-xs text-indigo-600 hover:underline" onclick="document.getElementById('admin-add-attendee-btn').click()">+ เพิ่มรายชื่อ</button>
+                                </div>
+                                <div id="admin-command-attendees-list" class="space-y-2 bg-gray-50 p-2 rounded max-h-60 overflow-y-auto">
+                                    </div>
+                                <button type="button" id="admin-add-attendee-btn" class="hidden"></button> </div>
+                        </div>
                     </div>
                 </form>
                 
-                <div id="admin-command-result" class="hidden mt-4 p-4 bg-green-50 border border-green-200 rounded-lg text-center"></div>
+                <div id="admin-command-result" class="hidden mt-6 p-6 bg-green-50 border border-green-200 rounded-lg text-center animate-fade-in shadow-inner">
+                    </div>
             </div>
 
-            <div class="p-4 border-t bg-gray-50 flex justify-end gap-3 sticky bottom-0">
-                <button id="command-approval-cancel-button" class="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-white">ยกเลิก</button>
-                <button id="admin-generate-command-button" class="px-6 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 shadow-md">
-                    ยืนยันและออกคำสั่ง (PDF/Doc)
+            <div class="p-4 border-t bg-gray-50 flex justify-end gap-3 shrink-0">
+                <button id="command-approval-cancel-button" class="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-white font-medium transition">ยกเลิก</button>
+                <button id="admin-generate-command-button" class="px-8 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 shadow-md flex items-center gap-2 transition transform hover:scale-105">
+                    <span>⚡</span> ยืนยันและออกคำสั่ง
                 </button>
             </div>
         </div>
     </div>
 
-    <div id="dispatch-modal" class="modal hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-        <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full p-6">
-            <div class="flex justify-between items-center mb-4 border-b pb-2">
-                <h3 class="text-xl font-bold text-gray-800">ออกหนังสือส่ง (Dispatch Book)</h3>
+    <div id="dispatch-modal" class="modal hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full p-6 transform transition-all">
+            <div class="flex justify-between items-center mb-6 border-b pb-3">
+                <h3 class="text-xl font-bold text-gray-800 flex items-center gap-2">
+                    <span>📤</span> ออกหนังสือส่ง (Dispatch Book)
+                </h3>
                 <button id="dispatch-modal-close-button" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
             </div>
-            <form id="dispatch-form" class="space-y-4">
+            
+            <form id="dispatch-form" class="space-y-5">
                 <input type="hidden" id="dispatch-request-id">
-                <div class="grid grid-cols-2 gap-4">
-                    <div><label class="label-text">เดือน</label><input type="text" id="dispatch-month" class="form-input" placeholder="มกราคม"></div>
-                    <div><label class="label-text">ปี พ.ศ.</label><input type="text" id="dispatch-year" class="form-input" placeholder="2569"></div>
+                
+                <div class="bg-blue-50 p-4 rounded-lg border border-blue-100 mb-4">
+                    <p class="text-sm text-blue-800 font-medium">ข้อมูลสำหรับหนังสือส่งเขตพื้นที่ฯ</p>
                 </div>
+
                 <div class="grid grid-cols-2 gap-4">
-                    <div><label class="label-text">จำนวนชุดคำสั่ง</label><input type="number" id="command-count" class="form-input" value="1"></div>
-                    <div><label class="label-text">จำนวนชุดเอกสารประกอบ</label><input type="number" id="memo-count" class="form-input" value="1"></div>
+                    <div>
+                        <label class="label-text">ประจำเดือน</label>
+                        <select id="dispatch-month" class="form-input w-full">
+                            <option value="มกราคม">มกราคม</option>
+                            <option value="กุมภาพันธ์">กุมภาพันธ์</option>
+                            <option value="มีนาคม">มีนาคม</option>
+                            <option value="เมษายน">เมษายน</option>
+                            <option value="พฤษภาคม">พฤษภาคม</option>
+                            <option value="มิถุนายน">มิถุนายน</option>
+                            <option value="กรกฎาคม">กรกฎาคม</option>
+                            <option value="สิงหาคม">สิงหาคม</option>
+                            <option value="กันยายน">กันยายน</option>
+                            <option value="ตุลาคม">ตุลาคม</option>
+                            <option value="พฤศจิกายน">พฤศจิกายน</option>
+                            <option value="ธันวาคม">ธันวาคม</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="label-text">ปี พ.ศ.</label>
+                        <input type="number" id="dispatch-year" class="form-input w-full" placeholder="2569">
+                    </div>
                 </div>
-                <div class="flex justify-end gap-2 mt-6">
-                    <button type="button" id="dispatch-cancel-button" class="px-4 py-2 border rounded hover:bg-gray-50">ยกเลิก</button>
-                    <button type="submit" id="dispatch-submit-button" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-bold">สร้างหนังสือส่ง</button>
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="label-text">จำนวนชุดคำสั่ง</label>
+                        <input type="number" id="command-count" class="form-input w-full text-center font-bold" value="1">
+                    </div>
+                    <div>
+                        <label class="label-text">จำนวนชุดเอกสารประกอบ</label>
+                        <input type="number" id="memo-count" class="form-input w-full text-center font-bold" value="1">
+                    </div>
+                </div>
+                
+                <div class="flex justify-end gap-3 mt-8">
+                    <button type="button" id="dispatch-cancel-button" class="px-5 py-2 border rounded-lg hover:bg-gray-50 text-gray-700 font-medium">ยกเลิก</button>
+                    <button type="submit" id="dispatch-submit-button" class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-bold shadow-md">สร้างหนังสือส่ง</button>
                 </div>
             </form>
         </div>
     </div>
 
-    <div id="alert-modal" class="modal hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div class="bg-white p-6 rounded-xl shadow-xl max-w-sm w-full mx-4 text-center">
-            <h3 id="alert-modal-title" class="text-lg font-bold mb-2">แจ้งเตือน</h3>
-            <p id="alert-modal-message" class="text-gray-600 mb-6"></p>
-            <button id="alert-modal-ok-button" class="w-full bg-indigo-600 text-white px-4 py-2 rounded-lg">ตกลง</button>
+    <div id="alert-modal" class="modal hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div class="bg-white p-6 rounded-xl shadow-2xl max-w-sm w-full mx-4 text-center transform scale-100">
+            <h3 id="alert-modal-title" class="text-lg font-bold mb-2 text-gray-900">แจ้งเตือน</h3>
+            <p id="alert-modal-message" class="text-gray-600 mb-6 text-sm"></p>
+            <button id="alert-modal-ok-button" class="w-full bg-indigo-600 text-white px-4 py-2.5 rounded-lg hover:bg-indigo-700 font-medium transition">ตกลง</button>
         </div>
     </div>
 
@@ -238,13 +410,36 @@
     <script src="js/firebaseService.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/requests.js"></script>
-    <script src="js/admin.js"></script> <script src="js/stats.js"></script>
-    <script src="js/main.js"></script> <script>
-        // Auto-redirect if not logged in (Double check)
+    
+    <script src="js/admin.js"></script>
+    
+    <script src="js/stats.js"></script>
+    <script src="js/main.js"></script>
+
+    <script>
         document.addEventListener('DOMContentLoaded', () => {
             if(!sessionStorage.getItem('currentUser')) {
                 window.location.href = 'index.html';
+            } else {
+                // Set Default Date in Dispatch Modal
+                const now = new Date();
+                const thaiMonths = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+                document.getElementById('dispatch-month').value = thaiMonths[now.getMonth()];
+                document.getElementById('dispatch-year').value = now.getFullYear() + 543;
             }
+        });
+        
+        // Helper to add attendee in admin modal (Admin can edit attendees)
+        document.getElementById('admin-add-attendee-btn').addEventListener('click', () => {
+             const container = document.getElementById('admin-command-attendees-list');
+             const div = document.createElement('div');
+             div.className = 'grid grid-cols-12 gap-2 items-center bg-white p-2 border rounded';
+             div.innerHTML = `
+                <div class="col-span-5"><input type="text" placeholder="ชื่อ-สกุล" class="admin-att-name form-input text-xs w-full"></div>
+                <div class="col-span-5"><input type="text" placeholder="ตำแหน่ง" class="admin-att-pos form-input text-xs w-full"></div>
+                <div class="col-span-2 text-right"><button type="button" class="text-red-500 hover:text-red-700" onclick="this.parentElement.parentElement.remove()">🗑️</button></div>
+             `;
+             container.appendChild(div);
         });
     </script>
 </body>
