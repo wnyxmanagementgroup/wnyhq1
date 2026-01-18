@@ -341,6 +341,48 @@ function enhanceEditFunctionSafety() {
     });
 }
 
+// ✅ ฟังก์ชันตรวจสอบสถานะ Server (Health Check)
+async function checkPDFServerStatus() {
+    const statusContainer = document.getElementById('server-status-container');
+    const statusText = document.getElementById('server-status-text');
+    const statusDot = document.getElementById('status-dot');
+    const statusPing = document.getElementById('status-ping');
+
+    if (!statusContainer) return;
+
+    statusContainer.classList.remove('hidden');
+
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+        // ตรวจสอบการเชื่อมต่อ (no-cors เพื่อไม่ให้ติด Block)
+        await fetch(PDF_ENGINE_CONFIG.BASE_URL, {
+            method: 'GET',
+            signal: controller.signal,
+            mode: 'no-cors'
+        });
+
+        clearTimeout(timeoutId);
+
+        // Online State
+        statusText.textContent = "ระบบ PDF พร้อมใช้งาน";
+        statusText.className = "font-medium text-green-600";
+        statusDot.className = "relative inline-flex rounded-full h-2 w-2 bg-green-500";
+        statusPing.className = "animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75";
+        statusContainer.className = "hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-green-50 border border-green-200 text-xs";
+
+    } catch (error) {
+        // Offline State
+        console.warn("PDF Server Check Failed:", error);
+        statusText.textContent = "ระบบ PDF ขัดข้อง";
+        statusText.className = "font-medium text-red-600";
+        statusDot.className = "relative inline-flex rounded-full h-2 w-2 bg-red-500";
+        statusPing.className = "hidden";
+        statusContainer.className = "hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-red-50 border border-red-200 text-xs";
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     console.log('App Initializing...');
     
@@ -353,6 +395,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (typeof loadPublicWeeklyData === 'function') loadPublicWeeklyData();
     
+    // ✅ เรียกใช้ฟังก์ชันตรวจสอบสถานะ PDF Server
+    checkPDFServerStatus();
+
     setupEventListeners();
     enhanceEditFunctionSafety();
     
