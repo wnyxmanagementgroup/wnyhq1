@@ -158,7 +158,13 @@
                         </svg>
                         <span id="notification-badge" class="hidden absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-red-100 transform translate-x-1/4 -translate-y-1/4 bg-red-600 rounded-full">0</span>
                     </button>
-
+<div id="server-status-container" class="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-gray-50 border border-gray-200 text-xs">
+    <span class="relative flex h-2 w-2">
+      <span id="status-ping" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-gray-400 opacity-75"></span>
+      <span id="status-dot" class="relative inline-flex rounded-full h-2 w-2 bg-gray-500"></span>
+    </span>
+    <span id="server-status-text" class="font-medium text-gray-500">กำลังตรวจสอบระบบ...</span>
+</div>
                     <div id="notification-dropdown" class="hidden absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-2xl border border-gray-100 z-50 overflow-hidden">
                         <div class="bg-gray-50 px-4 py-3 border-b border-gray-100 flex justify-between items-center">
                             <h3 class="font-bold text-gray-700">รายการค้างส่ง (Pending)</h3>
@@ -172,13 +178,6 @@
 
                 <button id="logout-button" class="btn btn-danger btn-sm">ออกจากระบบ</button>
             </div>
-            <div id="server-status-container" class="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-gray-50 border border-gray-200 text-xs">
-    <span class="relative flex h-2 w-2">
-      <span id="status-ping" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-gray-400 opacity-75"></span>
-      <span id="status-dot" class="relative inline-flex rounded-full h-2 w-2 bg-gray-500"></span>
-    </span>
-    <span id="server-status-text" class="font-medium text-gray-500">กำลังตรวจสอบระบบ...</span>
-</div>
         </header>
 
             <div id="navigation" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4 mb-6">
