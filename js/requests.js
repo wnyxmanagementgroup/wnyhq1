@@ -654,100 +654,89 @@ function toggleEditVehicleDetails() {
     if (privateDetails) privateDetails.classList.toggle('hidden', !privateCheckbox?.checked);
     if (publicDetails) publicDetails.classList.toggle('hidden', !publicCheckbox?.checked);
 }
-// --- แก้ไขในไฟล์ requests.js ---
-
-// --- แก้ไขในไฟล์ requests.js ---
-
+// แก้ไขใน requests.js - ฟังก์ชันบันทึกการแก้ไขพร้อมตัวตรวจจับการเปลี่ยนประเภทการเบิกเงิน
 async function generateDocumentFromDraft() {
     let requestId = document.getElementById('edit-request-id').value;
     const draftId = document.getElementById('edit-draft-id').value;
     
-    // Fallback หา ID
+    // 1. ตรวจสอบ ID
     if (!requestId) requestId = sessionStorage.getItem('currentEditRequestId');
     if (!requestId) { showAlert("ผิดพลาด", "ไม่พบรหัสคำขอ"); return; }
 
+    // 2. ดึงข้อมูลจากฟอร์มแก้ไข
     const formData = getEditFormData();
     if (!formData) return;
     if (!validateEditForm(formData)) return;
     
-    // เตรียมข้อมูลสำหรับสร้าง PDF
     formData.requestId = requestId;
     formData.draftId = draftId;
     formData.isEdit = true;
     formData.doctype = 'memo'; 
-    
-    // ★★★ [เพิ่มบรรทัดนี้] เพื่อให้ PDF ดึงเลขที่เอกสารไปแสดงได้ถูกต้อง ★★★
     formData.id = requestId; 
 
     toggleLoader('generate-document-button', true);
 
     try {
-        console.log("🚀 Generating PDF via Cloud Run (Edit Mode)...");
+        console.log("🚀 กำลังประมวลผลการแก้ไขเอกสาร...");
 
-        // 1. สร้าง PDF ฝั่ง Client (Cloud Run)
+        // 3. สร้าง PDF หลักเวอร์ชันใหม่ (Cloud Run)
         const { pdfBlob } = await generateOfficialPDF(formData);
 
-        // 2. UX: เปิดไฟล์ให้ดูทันที
-        const tempPdfUrl = URL.createObjectURL(pdfBlob);
-        window.open(tempPdfUrl, '_blank');
-
-        // แจ้งสถานะบนปุ่ม
-        const btnText = document.getElementById('generate-doc-button-text');
-        if (btnText) btnText.innerText = 'กำลังบันทึกลงระบบ...';
-
-        // 3. Background Process: อัปโหลดไฟล์ใหม่ขึ้น Drive
-        console.log("⏳ Uploading new PDF to Drive...");
-        const pdfBase64 = await blobToBase64(pdfBlob);
-        
-        const uploadResult = await apiCall('POST', 'uploadGeneratedFile', {
-            data: pdfBase64,
-            filename: `บันทึกข้อความ_${requestId.replace(/[\/\\:\.]/g, '-')}.pdf`,
-            mimeType: 'application/pdf',
-            username: formData.username
-        });
-
-        if (uploadResult.status !== 'success') throw new Error("Upload failed: " + uploadResult.message);
-        
-        // ได้ URL ใหม่มาแล้ว
-        const newPdfUrl = uploadResult.url;
-        formData.pdfUrl = newPdfUrl;
-        formData.completedMemoUrl = newPdfUrl;
-
-        // 4. อัปเดตข้อมูลลงฐานข้อมูล
-        console.log("💾 Updating database...");
-        const result = await apiCall('POST', 'updateRequest', formData);
-        
-        if (result.status === 'success') {
-            document.getElementById('edit-result-title').textContent = 'อัปเดตเอกสารสำเร็จ!';
-            document.getElementById('edit-result-message').textContent = `บันทึกข้อความ ที่ ${result.data.id || requestId} ถูกอัปเดตเรียบร้อยแล้ว`;
+        // 4. ตรวจจับเงื่อนไขการเบิกเงิน (Logic เดียวกับตอนสร้างใหม่)
+        if (formData.expenseOption !== 'no') {
+            // --- กรณีที่ยังเป็นแบบ "เบิกค่าใช้จ่าย" (ไม่ต้องแนบไฟล์) ---
+            console.log("💰 กรณีเบิกเงิน: อัปเดตข้อมูลและเปิดไฟล์ทันที");
             
-            const linkBtn = document.getElementById('edit-result-link');
-            linkBtn.href = newPdfUrl;
-            linkBtn.classList.remove('hidden');
+            const pdfBase64 = await blobToBase64(pdfBlob);
+            const uploadResult = await apiCall('POST', 'uploadGeneratedFile', {
+                data: pdfBase64,
+                filename: `บันทึกข้อความแก้ไข_${requestId.replace(/[\/\\:\.]/g, '-')}.pdf`,
+                mimeType: 'application/pdf',
+                username: formData.username
+            });
+
+            if (uploadResult.status !== 'success') throw new Error("Upload failed: " + uploadResult.message);
             
-            document.getElementById('edit-result').classList.remove('hidden');
+            formData.pdfUrl = uploadResult.url;
+            formData.completedMemoUrl = uploadResult.url;
+
+            // บันทึกลง Google Sheets และ Firestore
+            await apiCall('POST', 'updateRequest', formData);
+            const safeId = requestId.replace(/[\/\\:\.]/g, '-');
+            await db.collection('requests').doc(safeId).set({
+                pdfUrl: uploadResult.url,
+                status: 'รอการตรวจสอบ'
+            }, { merge: true });
+
+            window.open(uploadResult.url, '_blank');
+            showAlert("สำเร็จ", "อัปเดตข้อมูลและสร้างเอกสารใหม่เรียบร้อยแล้ว");
             
             clearRequestsCache();
             await fetchUserRequests();
-            
-            sessionStorage.removeItem('currentEditRequestId');
-            showAlert("สำเร็จ", "อัปเดตเอกสารเรียบร้อยแล้ว");
+            switchPage('dashboard-page');
+
         } else {
-            showAlert("ผิดพลาด", result.message || "ไม่สามารถอัปเดตข้อมูลในฐานข้อมูลได้");
+            // --- กรณีเปลี่ยนเป็น "ไม่เบิกค่าใช้จ่าย" (บังคับแนบไฟล์ใหม่) ---
+            console.log("📄 กรณีไม่เบิกเงิน: บังคับเข้าสู่กระบวนการแนบเอกสาร");
+            
+            // บันทึกการเปลี่ยนแปลงข้อความลง Google Sheets ก่อนเพื่อให้ข้อมูลเป็นปัจจุบัน
+            await apiCall('POST', 'updateRequest', formData);
+            
+            // เก็บไฟล์หลักไว้ในตัวแปร Global เพื่อรอรวมไฟล์
+            window.currentMainPDF = pdfBlob;
+            window.currentFormData = formData;
+
+            // เปิด Modal แนบไฟล์ (ซึ่งจะเช็คเงื่อนไข รอง ผอ. / วัน จ-ศ / รถส่วนตัว ให้อัตโนมัติ)
+            openAttachmentModal(requestId, formData);
         }
 
     } catch (error) {
-        console.error("Generate Edit Error:", error);
-        showAlert("แจ้งเตือน", "เปิดไฟล์สำเร็จ แต่การบันทึกลงระบบขัดข้อง: " + error.message);
+        console.error("Save Edit Error:", error);
+        showAlert("ผิดพลาด", "การอัปเดตขัดข้อง: " + error.message);
     } finally {
         toggleLoader('generate-document-button', false);
-        const btnText = document.getElementById('generate-doc-button-text');
-        if (btnText) btnText.innerText = 'บันทึกและสร้างเอกสาร';
     }
 }
-// --- แก้ไขในไฟล์ requests.js ---
-
-// --- แก้ไขในไฟล์ requests.js ---
 
 function getEditFormData() {
     try {
