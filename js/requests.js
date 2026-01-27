@@ -88,10 +88,19 @@ async function handleDeleteRequest(requestId) {
 
 
 // ✅ [แก้ไข] ดึงข้อมูลและกรองเฉพาะของฉัน (สำหรับ Dashboard)
+// --- แก้ไขใน js/requests.js ---
+
 async function fetchUserRequests() {
     try {
         const user = getCurrentUser();
         if (!user) return;
+
+        // 1. ตรวจสอบปีที่เลือก
+        const yearSelect = document.getElementById('user-year-select');
+        const selectedYear = yearSelect ? parseInt(yearSelect.value) : (new Date().getFullYear() + 543);
+        const currentYear = new Date().getFullYear() + 543;
+        
+        const isHistoryMode = selectedYear !== currentYear; // เช็คว่าเป็นโหมดดูย้อนหลังหรือไม่
 
         document.getElementById('requests-loader').classList.remove('hidden');
         document.getElementById('requests-list').classList.add('hidden');
@@ -100,34 +109,46 @@ async function fetchUserRequests() {
         let requestsData = [];
         let memosData = [];
 
-        // 1. ดึงข้อมูลจาก Firebase
-        if (typeof fetchRequestsHybrid === 'function' && typeof USE_FIREBASE !== 'undefined' && USE_FIREBASE) {
-            const firebaseResult = await fetchRequestsHybrid(user);
+        // 2. Logic การดึงข้อมูลแยกตามโหมด
+        if (isHistoryMode) {
+            console.log(`📜 Fetching HISTORY data for year ${selectedYear} directly from GAS...`);
             
-            if (firebaseResult !== null) {
-                console.log("✅ Loaded requests from Firebase");
-                requestsData = firebaseResult;
+            // ★ ยิงตรงไป GAS (ไม่ผ่าน Firebase)
+            const res = await apiCall('GET', 'getRequestsByYear', { 
+                year: selectedYear, 
+                username: user.username 
+            });
+            
+            if (res.status === 'success') requestsData = res.data;
+            
+            // (Optional) อาจต้องดึง Memo ของปีนั้นด้วย ถ้า API แยกกัน
+            // const memoRes = await apiCall('GET', 'getMemosByYear', { ... });
+
+        } else {
+            // ★ โหมดปกติ (ปีปัจจุบัน) ใช้ Hybrid/Firebase เหมือนเดิม
+            if (typeof fetchRequestsHybrid === 'function' && typeof USE_FIREBASE !== 'undefined' && USE_FIREBASE) {
+                const firebaseResult = await fetchRequestsHybrid(user);
+                if (firebaseResult !== null) {
+                    requestsData = firebaseResult;
+                } else {
+                    const res = await apiCall('GET', 'getUserRequests', { username: user.username });
+                    if (res.status === 'success') requestsData = res.data;
+                }
             } else {
-                // Fallback GAS
                 const res = await apiCall('GET', 'getUserRequests', { username: user.username });
                 if (res.status === 'success') requestsData = res.data;
             }
-        } else {
-            // Standard GAS
-            const res = await apiCall('GET', 'getUserRequests', { username: user.username });
-            if (res.status === 'success') requestsData = res.data;
+            
+            // ดึง Memo ปัจจุบัน
+            const memosResult = await apiCall('GET', 'getSentMemos', { username: user.username });
+            if (memosResult.status === 'success') memosData = memosResult.data || [];
         }
 
-        // 2. ดึง Memo
-        const memosResult = await apiCall('GET', 'getSentMemos', { username: user.username });
-        if (memosResult.status === 'success') memosData = memosResult.data || [];
-        
-        // 3. ⚠️ สำคัญ: กรองข้อมูลให้เหลือเฉพาะของ user คนนั้น (Dashboard ส่วนตัว)
-        // แม้จะเป็น Admin ก็ให้เห็นแค่ของตัวเองในหน้านี้ (Admin มีหน้าจัดการแยก)
+        // 3. กรองและเรียงลำดับ
         if (requestsData && requestsData.length > 0) {
+            // ถ้าเป็น GAS (History) อาจจะกรองมาให้แล้ว แต่กรองซ้ำเพื่อความชัวร์
             requestsData = requestsData.filter(req => req.username === user.username);
             
-            // เรียงลำดับ ล่าสุด -> เก่าสุด
             requestsData.sort((a, b) => {
                 const dateA = new Date(a.timestamp || a.docDate || 0).getTime();
                 const dateB = new Date(b.timestamp || b.docDate || 0).getTime();
@@ -139,12 +160,15 @@ async function fetchUserRequests() {
         allRequestsCache = requestsData;
         userMemosCache = memosData;
         renderRequestsList(allRequestsCache, userMemosCache);
-        // [เพิ่มใหม่] อัปเดตการแจ้งเตือน
-        updateNotifications(allRequestsCache, userMemosCache);
+        
+        // ถ้าเป็นโหมดประวัติ อาจปิดการแจ้งเตือนหรือปุ่มแก้ไขบางอย่าง
+        if (!isHistoryMode) {
+            updateNotifications(allRequestsCache, userMemosCache);
+        }
 
     } catch (error) {
         console.error('Error fetching requests:', error);
-        showAlert('ผิดพลาด', 'ไม่สามารถโหลดข้อมูลคำขอได้');
+        showAlert('ผิดพลาด', 'ไม่สามารถโหลดข้อมูลได้');
     } finally {
         document.getElementById('requests-loader').classList.add('hidden');
     }
@@ -367,16 +391,38 @@ async function populateEditForm(requestData) {
         document.getElementById('edit-start-date').value = formatDateForInput(requestData.startDate);
         document.getElementById('edit-end-date').value = formatDateForInput(requestData.endDate);
         
-        const attendeesList = document.getElementById('edit-attendees-list');
-        attendeesList.innerHTML = '';
+        // --- ส่วนที่แก้ไข (แก้ชื่อตัวแปรซ้ำจาก attendeesList เป็น attendeesListEl และ attendeesData) ---
+        const attendeesListEl = document.getElementById('edit-attendees-list');
+        if (attendeesListEl) attendeesListEl.innerHTML = '';
         
-        if (requestData.attendees && requestData.attendees.length > 0) {
-            requestData.attendees.forEach((attendee) => {
-                if (attendee.name && attendee.position) {
-                    addEditAttendeeField(attendee.name, attendee.position);
+        // ใช้ชื่อตัวแปรใหม่ 'attendeesData' เพื่อไม่ให้ชนกับ Element ID
+        let attendeesData = [];
+        if (requestData.attendees) {
+            if (Array.isArray(requestData.attendees)) {
+                attendeesData = requestData.attendees;
+            } else if (typeof requestData.attendees === 'string') {
+                try {
+                    attendeesData = JSON.parse(requestData.attendees);
+                } catch (e) {
+                    console.warn("Parse attendees error:", e);
+                    attendeesData = [];
+                }
+            }
+        }
+
+        // วนลูปแสดงข้อมูล
+        if (attendeesData && attendeesData.length > 0) {
+            attendeesData.forEach((attendee) => {
+                // รองรับทั้งเคสที่มี Property name/position หรือไม่มี (เผื่อข้อมูลเก่า)
+                const name = attendee.name || attendee['ชื่อ-นามสกุล'] || '';
+                const position = attendee.position || attendee['ตำแหน่ง'] || '';
+                
+                if (name) {
+                    addEditAttendeeField(name, position);
                 }
             });
         }
+        // ---------------------------------------------------------------------------
         
         if (requestData.expenseOption === 'partial') {
             document.getElementById('edit-expense_partial').checked = true;
@@ -416,15 +462,20 @@ async function populateEditForm(requestData) {
                     document.getElementById('edit-license-plate').value = requestData.licensePlate;
                 }
                  if (requestData.vehicleOption === 'public' && requestData.publicVehicleDetails) {
-                     document.getElementById('edit-public-vehicle-details').value = requestData.publicVehicleDetails;
+                     // ใช้ ID ที่ถูกต้องตาม HTML ที่แก้ไปก่อนหน้า
+                     const publicInput = document.getElementById('edit-public-vehicle-details');
+                     if(publicInput) publicInput.value = requestData.publicVehicleDetails;
                 }
             }
         }
         
         if (requestData.department) {
             document.getElementById('edit-department').value = requestData.department;
-            const headNameInput = document.getElementById('edit-head-name');
-            headNameInput.value = specialPositionMap[requestData.department] || '';
+            // อัปเดตชื่อหัวหน้างานอัตโนมัติ (ถ้ามี map)
+            if (typeof specialPositionMap !== 'undefined') {
+                const headNameInput = document.getElementById('edit-head-name');
+                if(headNameInput) headNameInput.value = specialPositionMap[requestData.department] || '';
+            }
         }
         if (requestData.headName) {
             document.getElementById('edit-head-name').value = requestData.headName;
@@ -435,54 +486,91 @@ async function populateEditForm(requestData) {
     }
 }
 
+// --- แก้ไขในไฟล์ requests.js ---
+
+// --- แก้ไขในไฟล์ requests.js ---
+
 async function openEditPage(requestId) {
     try {
         console.log("🔓 Opening edit page for request:", requestId);
-        if (!requestId || requestId === 'undefined' || requestId === 'null') {
+        
+        if (!requestId) {
             showAlert("ผิดพลาด", "ไม่พบรหัสคำขอ");
             return;
         }
+
         const user = getCurrentUser();
         if (!user) {
             showAlert("ผิดพลาด", "กรุณาเข้าสู่ระบบใหม่");
             return;
         }
         
-        document.getElementById('edit-result').classList.add('hidden');
-        document.getElementById('edit-attendees-list').innerHTML = `
-            <div class="text-center p-4"><div class="loader mx-auto"></div><p class="mt-2">กำลังโหลดข้อมูล...</p></div>`;
+        // 1. Reset ฟอร์ม
+        resetEditPage();
+        
+        let requestData = null;
 
-        const result = await apiCall('GET', 'getDraftRequest', { requestId: requestId, username: user.username });
+        // 2. [ส่วนสำคัญ] พยายามดึงข้อมูลสดจาก Firebase (Database) ก่อน
+        // เพราะ Firebase จะเก็บข้อมูลได้ละเอียดกว่า CSV (เช่น มีรายชื่อครบ)
+        try {
+            // แปลง ID ให้เป็น format ของ Firebase doc (เช่น บค001/2568 -> บค001-2568)
+            const docId = requestId.replace(/[\/\\\:\.]/g, '-');
+            const docRef = db.collection('requests').doc(docId);
+            const docSnap = await docRef.get();
 
-        if (result.status === 'success' && result.data) {
-            let data = result.data;
-            if (result.data && result.data.data) {
-                data = result.data.data;
+            if (docSnap.exists) {
+                console.log("✅ พบข้อมูล Backup ใน Firebase");
+                requestData = docSnap.data();
+                
+                // ตรวจสอบว่าใน Firebase มีรายชื่อไหม
+                if (requestData.attendees) {
+                     // ถ้าเก็บเป็น String ให้แปลงกลับเป็น Array
+                     if (typeof requestData.attendees === 'string') {
+                         try { requestData.attendees = JSON.parse(requestData.attendees); } 
+                         catch (e) { requestData.attendees = []; }
+                     }
+                }
             }
-            if (data.status === 'error') {
-                showAlert("ผิดพลาด", data.message || "เกิดข้อผิดพลาดในการดึงข้อมูล");
-                return;
-            }
-            data.attendees = Array.isArray(data.attendees) ? data.attendees : [];
+        } catch (firebaseError) {
+            console.warn("ไม่สามารถดึงข้อมูลจาก Firebase ได้:", firebaseError);
+        }
 
-            if ((!data.requesterName || data.requesterName.trim() === '') && user?.fullName) {
-                data.requesterName = user.fullName;
+        // 3. ถ้าใน Firebase ไม่มี (หรือ Error) ให้ลองดูใน Cache (CSV)
+        if (!requestData && typeof allRequestsCache !== 'undefined') {
+            console.log("⚠️ ไม่พบใน Firebase ใช้ข้อมูลจาก Cache แทน");
+            requestData = allRequestsCache.find(r => r.id === requestId || r.requestId === requestId);
+        }
+
+        // 4. ถ้ายังไม่เจออีก ให้ไปเรียก API (ทางเลือกสุดท้าย)
+        if (!requestData) {
+            toggleLoader('requests-table-body', true); // โชว์ loader ชั่วคราว
+            const result = await apiCall('GET', 'getDraftRequest', { requestId: requestId, username: user.username });
+            if (result.status === 'success' && result.data) {
+                requestData = result.data.data || result.data;
             }
-            if ((!data.requesterPosition || data.requesterPosition.trim() === '') && user?.position) {
-                data.requesterPosition = user.position;
+            toggleLoader('requests-table-body', false);
+        }
+
+        if (requestData) {
+            // ตรวจสอบรายชื่อครั้งสุดท้าย
+            if (!requestData.attendees || !Array.isArray(requestData.attendees)) {
+                requestData.attendees = [];
             }
 
             sessionStorage.setItem('currentEditRequestId', requestId);
-            await populateEditForm(data);
+            
+            // ใส่ข้อมูลลงฟอร์ม
+            await populateEditForm(requestData);
             switchPage('edit-page');
         } else {
-            showAlert("ผิดพลาด", result.message || "ไม่พบข้อมูลคำขอ");
+            showAlert("ผิดพลาด", "ไม่พบข้อมูลคำขอ");
         }
+
     } catch (error) {
-        showAlert("ผิดพลาด", "ไม่สามารถโหลดข้อมูลสำหรับแก้ไขได้: " + error.message);
+        console.error(error);
+        showAlert("ผิดพลาด", "การเปิดหน้าแก้ไขขัดข้อง: " + error.message);
     }
 }
-
 function addEditAttendeeField(name = '', position = '') {
     const list = document.getElementById('edit-attendees-list');
     const attendeeDiv = document.createElement('div');
@@ -552,19 +640,29 @@ function toggleEditVehicleOptions() {
      toggleEditVehicleDetails();
 }
 
+// --- แก้ไขในไฟล์ requests.js ---
+
 function toggleEditVehicleDetails() {
     const privateDetails = document.getElementById('edit-private-vehicle-details'); 
-    const publicDetails = document.getElementById('edit-public-vehicle-details'); 
+    
+    // แก้ไข ID ให้ตรงกับ HTML ใหม่ (เติม -container)
+    const publicDetails = document.getElementById('edit-public-vehicle-details-container'); 
+    
     const privateCheckbox = document.querySelector('input[name="edit-vehicle_option"][value="private"]');
     const publicCheckbox = document.querySelector('input[name="edit-vehicle_option"][value="public"]');
 
     if (privateDetails) privateDetails.classList.toggle('hidden', !privateCheckbox?.checked);
     if (publicDetails) publicDetails.classList.toggle('hidden', !publicCheckbox?.checked);
 }
+// --- แก้ไขในไฟล์ requests.js ---
+
+// --- แก้ไขในไฟล์ requests.js ---
 
 async function generateDocumentFromDraft() {
     let requestId = document.getElementById('edit-request-id').value;
     const draftId = document.getElementById('edit-draft-id').value;
+    
+    // Fallback หา ID
     if (!requestId) requestId = sessionStorage.getItem('currentEditRequestId');
     if (!requestId) { showAlert("ผิดพลาด", "ไม่พบรหัสคำขอ"); return; }
 
@@ -572,30 +670,61 @@ async function generateDocumentFromDraft() {
     if (!formData) return;
     if (!validateEditForm(formData)) return;
     
+    // เตรียมข้อมูลสำหรับสร้าง PDF
     formData.requestId = requestId;
     formData.draftId = draftId;
     formData.isEdit = true;
+    formData.doctype = 'memo'; 
     
+    // ★★★ [เพิ่มบรรทัดนี้] เพื่อให้ PDF ดึงเลขที่เอกสารไปแสดงได้ถูกต้อง ★★★
+    formData.id = requestId; 
+
     toggleLoader('generate-document-button', true);
+
     try {
-        let result;
-        try {
-            // การแก้ไขเอกสาร ยังต้องพึ่ง GAS ในการจัดการไฟล์ PDF ที่มีอยู่
-            result = await apiCall('POST', 'updateRequest', formData);
-        } catch (updateError) {
-            result = await apiCall('POST', 'createRequest', formData);
-        }
+        console.log("🚀 Generating PDF via Cloud Run (Edit Mode)...");
+
+        // 1. สร้าง PDF ฝั่ง Client (Cloud Run)
+        const { pdfBlob } = await generateOfficialPDF(formData);
+
+        // 2. UX: เปิดไฟล์ให้ดูทันที
+        const tempPdfUrl = URL.createObjectURL(pdfBlob);
+        window.open(tempPdfUrl, '_blank');
+
+        // แจ้งสถานะบนปุ่ม
+        const btnText = document.getElementById('generate-doc-button-text');
+        if (btnText) btnText.innerText = 'กำลังบันทึกลงระบบ...';
+
+        // 3. Background Process: อัปโหลดไฟล์ใหม่ขึ้น Drive
+        console.log("⏳ Uploading new PDF to Drive...");
+        const pdfBase64 = await blobToBase64(pdfBlob);
+        
+        const uploadResult = await apiCall('POST', 'uploadGeneratedFile', {
+            data: pdfBase64,
+            filename: `บันทึกข้อความ_${requestId.replace(/[\/\\:\.]/g, '-')}.pdf`,
+            mimeType: 'application/pdf',
+            username: formData.username
+        });
+
+        if (uploadResult.status !== 'success') throw new Error("Upload failed: " + uploadResult.message);
+        
+        // ได้ URL ใหม่มาแล้ว
+        const newPdfUrl = uploadResult.url;
+        formData.pdfUrl = newPdfUrl;
+        formData.completedMemoUrl = newPdfUrl;
+
+        // 4. อัปเดตข้อมูลลงฐานข้อมูล
+        console.log("💾 Updating database...");
+        const result = await apiCall('POST', 'updateRequest', formData);
         
         if (result.status === 'success') {
             document.getElementById('edit-result-title').textContent = 'อัปเดตเอกสารสำเร็จ!';
-            document.getElementById('edit-result-message').textContent = `บันทึกข้อความ ที่ ${result.data.id || requestId} ถูกอัปเดตแล้ว`;
-            if (result.data.pdfUrl) {
-                document.getElementById('edit-result-link').href = result.data.pdfUrl;
-                document.getElementById('edit-result-link').classList.remove('hidden');
-            } else {
-                document.getElementById('edit-result-link').classList.add('hidden');
-                document.getElementById('edit-result-message').textContent += ' (แต่ยังไม่สามารถสร้างไฟล์ PDF ได้ในขณะนี้)';
-            }
+            document.getElementById('edit-result-message').textContent = `บันทึกข้อความ ที่ ${result.data.id || requestId} ถูกอัปเดตเรียบร้อยแล้ว`;
+            
+            const linkBtn = document.getElementById('edit-result-link');
+            linkBtn.href = newPdfUrl;
+            linkBtn.classList.remove('hidden');
+            
             document.getElementById('edit-result').classList.remove('hidden');
             
             clearRequestsCache();
@@ -604,64 +733,116 @@ async function generateDocumentFromDraft() {
             sessionStorage.removeItem('currentEditRequestId');
             showAlert("สำเร็จ", "อัปเดตเอกสารเรียบร้อยแล้ว");
         } else {
-            showAlert("ผิดพลาด", result.message || "ไม่สามารถอัปเดตเอกสารได้");
+            showAlert("ผิดพลาด", result.message || "ไม่สามารถอัปเดตข้อมูลในฐานข้อมูลได้");
         }
+
     } catch (error) {
-        showAlert("เกิดข้อผิดพลาด", "ไม่สามารถอัปเดตเอกสารได้: " + error.message);
+        console.error("Generate Edit Error:", error);
+        showAlert("แจ้งเตือน", "เปิดไฟล์สำเร็จ แต่การบันทึกลงระบบขัดข้อง: " + error.message);
     } finally {
         toggleLoader('generate-document-button', false);
+        const btnText = document.getElementById('generate-doc-button-text');
+        if (btnText) btnText.innerText = 'บันทึกและสร้างเอกสาร';
     }
 }
+// --- แก้ไขในไฟล์ requests.js ---
+
+// --- แก้ไขในไฟล์ requests.js ---
 
 function getEditFormData() {
     try {
-        let requestId = document.getElementById('edit-request-id').value;
-        const draftId = document.getElementById('edit-draft-id').value;
-        if (!requestId) requestId = sessionStorage.getItem('currentEditRequestId');
-        if (!requestId) { const urlParams = new URLSearchParams(window.location.search); requestId = urlParams.get('requestId'); }
+        console.log("📝 เริ่มดึงข้อมูลจากฟอร์มแก้ไข (แบบผสานข้อมูลเดิม)...");
 
+        const user = getCurrentUser();
+        if (!user) throw new Error("ไม่พบข้อมูลผู้ใช้งาน (Session หลุด)");
+
+        // ตัวช่วยดึงค่า
+        const getValue = (id) => {
+            const el = document.getElementById(id);
+            return el ? el.value : '';
+        };
+
+        // 1. หา ID ของเอกสาร
+        let requestId = getValue('edit-request-id');
+        if (!requestId) requestId = sessionStorage.getItem('currentEditRequestId');
+        
+        // 2. ★★★ สำคัญ: ดึงข้อมูลเดิมจาก Cache มาเป็นฐานก่อน (กันข้อมูลหาย) ★★★
+        let originalData = {};
+        if (typeof allRequestsCache !== 'undefined') {
+            const cached = allRequestsCache.find(r => r.id === requestId || r.requestId === requestId);
+            if (cached) {
+                // คัดลอกข้อมูลเดิมมาทั้งหมด (Clone)
+                originalData = JSON.parse(JSON.stringify(cached));
+            }
+        }
+
+        // 3. ดึงข้อมูลใหม่จากหน้าจอ (เหมือนเดิม)
         const expenseItems = [];
         const expenseOption = document.querySelector('input[name="edit-expense_option"]:checked');
         if (expenseOption && expenseOption.value === 'partial') {
             document.querySelectorAll('input[name="edit-expense_item"]:checked').forEach(chk => {
                 const item = { name: chk.dataset.itemName };
-                if (item.name === 'ค่าใช้จ่ายอื่นๆ') { item.detail = document.getElementById('edit-expense_other_text').value.trim(); }
+                if (item.name === 'ค่าใช้จ่ายอื่นๆ') { 
+                    item.detail = getValue('edit-expense_other_text').trim(); 
+                }
                 expenseItems.push(item);
             });
         }
+
         const attendees = Array.from(document.querySelectorAll('#edit-attendees-list > div')).map(div => {
             const nameInput = div.querySelector('.attendee-name');
             const select = div.querySelector('.attendee-position-select');
             let position = select ? select.value : '';
-            if (position === 'other') { const otherInput = div.querySelector('.attendee-position-other'); position = otherInput ? otherInput.value.trim() : ''; }
+            if (position === 'other') { 
+                const otherInput = div.querySelector('.attendee-position-other'); 
+                position = otherInput ? otherInput.value.trim() : ''; 
+            }
             return { name: nameInput ? nameInput.value.trim() : '', position: position };
         }).filter(att => att.name && att.position);
 
-        const user = getCurrentUser();
+        // 4. ผสานข้อมูล (เอาข้อมูลเดิมตั้ง + ทับด้วยข้อมูลใหม่)
         const formData = {
-            draftId: draftId || '', requestId: requestId || '', username: user.username,
-            docDate: document.getElementById('edit-doc-date').value,
-            requesterName: document.getElementById('edit-requester-name').value.trim(),
-            requesterPosition: document.getElementById('edit-requester-position').value.trim(),
-            location: document.getElementById('edit-location').value.trim(),
-            purpose: document.getElementById('edit-purpose').value.trim(),
-            startDate: document.getElementById('edit-start-date').value,
-            endDate: document.getElementById('edit-end-date').value,
-            attendees: attendees,
+            ...originalData, // เอาข้อมูลเก่ามาวางก่อน (เช่น timestamp, status เดิม)
+            
+            // ข้อมูลที่แก้ไขได้ (จะทับข้อมูลเก่า)
+            requestId: requestId,
+            id: requestId, // ย้ำ ID อีกครั้ง
+            draftId: getValue('edit-draft-id') || originalData.draftId,
+            username: user.username,
+            
+            docDate: getValue('edit-doc-date'),
+            requesterName: getValue('edit-requester-name').trim(),
+            requesterPosition: getValue('edit-requester-position').trim(),
+            location: getValue('edit-location').trim(),
+            purpose: getValue('edit-purpose').trim(),
+            startDate: getValue('edit-start-date'),
+            endDate: getValue('edit-end-date'),
+            
+            attendees: attendees, // รายชื่อผู้ร่วมเดินทางชุดใหม่
+            
             expenseOption: expenseOption ? expenseOption.value : 'no',
             expenseItems: expenseItems,
-            totalExpense: document.getElementById('edit-total-expense').value || 0,
+            totalExpense: getValue('edit-total-expense') || 0,
+            
             vehicleOption: document.querySelector('input[name="edit-vehicle_option"]:checked')?.value || 'gov',
-            licensePlate: document.getElementById('edit-license-plate').value.trim(),
-            publicVehicleDetails: document.getElementById('edit-public-vehicle-details').value.trim(),
-            department: document.getElementById('edit-department').value,
-            headName: document.getElementById('edit-head-name').value,
+            licensePlate: getValue('edit-license-plate').trim(),
+            publicVehicleDetails: getValue('edit-public-vehicle-details').trim(), // แก้ ID ตามที่คุยกันก่อนหน้า
+            
+            department: getValue('edit-department'),
+            headName: getValue('edit-head-name'),
+            
             isEdit: true
         };
-        return formData;
-    } catch (error) { showAlert("ระบบผิดพลาด", "ไม่สามารถอ่านข้อมูลจากฟอร์มได้"); return null; }
-}
 
+        console.log("✅ ข้อมูลสำหรับบันทึก (Merged):", formData);
+        return formData;
+
+    } catch (error) {
+        console.error('Error in getEditFormData:', error);
+        showAlert("พบข้อผิดพลาด", "อ่านข้อมูลไม่สำเร็จ: " + error.message); 
+        return null;
+    }
+}
 function validateEditForm(formData) {
     if (!formData.docDate || !formData.requesterName || !formData.location || !formData.purpose || !formData.startDate || !formData.endDate) {
         showAlert("ข้อมูลไม่ครบถ้วน", "กรุณากรอกข้อมูลที่จำเป็นให้ครบ"); return false;
@@ -742,12 +923,14 @@ function toggleVehicleDetails() {
     if (publicDetails) publicDetails.classList.toggle('hidden', !publicCheckbox?.checked);
 }
 
-// ✅ [HYBRID] จัดการการ Submit ฟอร์มขอไปราชการ (Hybrid Write)
+// ✅ [HYBRID V2] สร้างบันทึกข้อความ + PDF Cloud Run + Storage
+// แก้ไขใน requests.js - ฟังก์ชันส่งฟอร์มพร้อมตัวตรวจจับเงื่อนไขการเบิกเงิน
 async function handleRequestFormSubmit(e) {
     e.preventDefault();
     const user = getCurrentUser();
     if (!user) { showAlert('ผิดพลาด', 'กรุณาเข้าสู่ระบบก่อน'); return; }
 
+    // 1. เตรียมข้อมูลจากฟอร์ม
     const formData = {
         username: user.username,
         docDate: document.getElementById('form-doc-date').value,
@@ -768,7 +951,6 @@ async function handleRequestFormSubmit(e) {
         totalExpense: document.getElementById('form-total-expense').value || 0,
         vehicleOption: document.querySelector('input[name="vehicle_option"]:checked').value,
         licensePlate: document.getElementById('form-license-plate').value,
-        publicVehicleDetails: document.getElementById('form-public-vehicle-details').value,
         department: document.getElementById('form-department').value,
         headName: document.getElementById('form-head-name').value,
         isEdit: false 
@@ -777,7 +959,7 @@ async function handleRequestFormSubmit(e) {
     if (formData.expenseOption === 'partial') {
         document.querySelectorAll('input[name="expense_item"]:checked').forEach(chk => {
             const item = { name: chk.dataset.itemName };
-            if (item.name === 'ค่าใช้จ่ายอื่นๆ') { item.detail = document.getElementById('expense_other_text').value; }
+            if (item.name === 'ค่าใช้จ่ายอื่นๆ') { item.detail = document.getElementById('expense_other_text')?.value || ''; }
             formData.expenseItems.push(item);
         });
     }
@@ -785,42 +967,55 @@ async function handleRequestFormSubmit(e) {
     toggleLoader('submit-request-button', true);
     
     try {
-        let result;
-        
-        // 1. ถ้าเปิดใช้ Hybrid และมีฟังก์ชัน createRequestHybrid
-        if (typeof createRequestHybrid === 'function' && typeof USE_FIREBASE !== 'undefined' && USE_FIREBASE) {
-            console.log("🚀 Submitting via Hybrid (Firebase -> GAS)");
-            result = await createRequestHybrid(formData);
-        } else {
-            console.log("🐌 Submitting via Standard GAS");
-            result = await apiCall('POST', 'createRequest', formData);
-        }
+        // 2. จอง ID ในระบบ
+        let result = await apiCall('POST', 'createRequest', formData);
 
         if (result.status === 'success') {
-            document.getElementById('form-result-title').textContent = 'สร้างเอกสารสำเร็จ!';
-            document.getElementById('form-result-message').textContent = `บันทึกข้อความ ที่ ${result.data.id || 'รอออกเลข'} ถูกสร้างแล้ว`;
+            const newRequestId = result.data.id;
             
-            if (result.data.pdfUrl) {
-                document.getElementById('form-result-link').href = result.data.pdfUrl;
-                document.getElementById('form-result-link').classList.remove('hidden');
+            // 3. สร้าง PDF หลักผ่าน Cloud Run
+            const pdfData = { ...formData, doctype: 'memo', id: newRequestId };
+            const { pdfBlob } = await generateOfficialPDF(pdfData);
+
+            // ตรวจจับเงื่อนไข: ถ้ามีการเบิกค่าใช้จ่าย (expenseOption ไม่ใช่ 'no')
+            if (formData.expenseOption !== 'no') {
+                // --- กรณีเบิกเงิน: จบกระบวนการทันที ---
+                const pdfBase64 = await blobToBase64(pdfBlob);
+                const uploadResult = await apiCall('POST', 'uploadGeneratedFile', {
+                    data: pdfBase64,
+                    filename: `บันทึกข้อความ_${newRequestId.replace(/\//g,'-')}.pdf`,
+                    mimeType: 'application/pdf',
+                    username: user.username
+                });
+
+                if (uploadResult.status === 'success') {
+                    // อัปเดตสถานะใน Firestore
+                    const safeId = newRequestId.replace(/[\/\\:\.]/g, '-');
+                    await db.collection('requests').doc(safeId).set({
+                        pdfUrl: uploadResult.url,
+                        status: 'รอการตรวจสอบ'
+                    }, { merge: true });
+
+                    showAlert('สำเร็จ', 'สร้างบันทึกข้อความแบบเบิกค่าใช้จ่ายเรียบร้อยแล้ว');
+                    window.open(uploadResult.url, '_blank');
+                    
+                    clearRequestsCache();
+                    await fetchUserRequests();
+                    switchPage('dashboard-page');
+                }
             } else {
-                // กรณี Firebase รับงานไปแล้ว แต่ GAS ยังทำ PDF ไม่เสร็จ
-                document.getElementById('form-result-link').classList.add('hidden');
-                document.getElementById('form-result-message').textContent += ' (กำลังสร้างไฟล์ PDF กรุณารอสักครู่ และตรวจสอบในหน้าแดชบอร์ด)';
+                // --- กรณีไม่เบิกเงิน: เข้าสู่กระบวนการแนบไฟล์เพิ่มเติม ---
+                window.currentMainPDF = pdfBlob;
+                window.currentFormData = formData;
+                openAttachmentModal(newRequestId, formData);
             }
-            
-            document.getElementById('form-result').classList.remove('hidden');
-            document.getElementById('request-form').reset();
-            document.getElementById('form-attendees-list').innerHTML = '';
-            
-            clearRequestsCache();
-            await fetchUserRequests(); // รีโหลดหน้าจอ
+
         } else { 
             showAlert('ผิดพลาด', result.message); 
         }
     } catch (error) { 
         console.error(error);
-        showAlert('เกิดข้อผิดพลาด', 'ไม่สามารถสร้างเอกสารได้: ' + error.message); 
+        showAlert('แจ้งเตือน', 'เกิดข้อผิดพลาด: ' + error.message); 
     } finally { 
         toggleLoader('submit-request-button', false); 
     }
@@ -1050,4 +1245,289 @@ function openSendMemoFromNotif(requestId) {
     // เปิด Modal
     document.getElementById('memo-modal-request-id').value = requestId;
     document.getElementById('send-memo-modal').style.display = 'flex';
+}
+// --- แก้ไขในไฟล์ requests.js ---
+
+async function openEditPage(requestId) {
+    try {
+        console.log("🔓 Opening edit page for request:", requestId);
+        
+        if (!requestId || requestId === 'undefined' || requestId === 'null') {
+            showAlert("ผิดพลาด", "ไม่พบรหัสคำขอ");
+            return;
+        }
+
+        const user = getCurrentUser();
+        if (!user) {
+            showAlert("ผิดพลาด", "กรุณาเข้าสู่ระบบใหม่");
+            return;
+        }
+        
+        // 1. Reset ฟอร์มก่อนเสมอ
+        resetEditPage();
+        
+        // 2. พยายามหาข้อมูลจาก Cache (ข้อมูลที่โชว์ในตาราง Dashboard) ก่อน เพื่อความเร็ว
+        let requestData = null;
+        if (typeof allRequestsCache !== 'undefined' && allRequestsCache.length > 0) {
+            // ค้นหาตาม ID หรือ RequestID
+            requestData = allRequestsCache.find(r => r.id === requestId || r.requestId === requestId);
+        }
+
+        // 3. ถ้าไม่เจอใน Cache ให้ไปโหลดจาก Server (API/Firebase)
+        if (!requestData) {
+            document.getElementById('edit-attendees-list').innerHTML = `
+                <div class="text-center p-4"><div class="loader mx-auto"></div><p class="mt-2">กำลังโหลดข้อมูล...</p></div>`;
+            
+            // เรียก Hybrid function หรือ API
+            const result = await apiCall('GET', 'getDraftRequest', { requestId: requestId, username: user.username });
+            
+            if (result.status === 'success' && result.data) {
+                requestData = result.data.data || result.data;
+            }
+        }
+
+        if (requestData) {
+            // บันทึก ID ไว้สำหรับการบันทึก
+            sessionStorage.setItem('currentEditRequestId', requestId);
+            
+            // เรียกฟังก์ชันใส่ข้อมูลลงฟอร์ม (Populate)
+            await populateEditForm(requestData);
+            
+            // สลับไปหน้า Edit
+            switchPage('edit-page');
+        } else {
+            showAlert("ผิดพลาด", "ไม่พบข้อมูลคำขอ หรือคุณไม่มีสิทธิ์เข้าถึง");
+        }
+
+    } catch (error) {
+        console.error(error);
+        showAlert("ผิดพลาด", "ไม่สามารถโหลดข้อมูลสำหรับแก้ไขได้: " + error.message);
+    }
+}
+// --- วางต่อท้ายไฟล์ requests.js ---
+
+// ฟังก์ชันบันทึกการแก้ไข (พร้อม Backup ลง Firebase เพื่อกันข้อมูลรายชื่อหาย)
+async function saveEditRequest() {
+    const btn = document.getElementById('save-edit-btn');
+    
+    // ป้องกันการกดรัว (Disable ปุ่มชั่วคราว)
+    if (btn) {
+        btn.disabled = true;
+        btn.classList.add('opacity-50', 'cursor-not-allowed');
+        btn.innerHTML = '<span class="loader-sm"></span> กำลังบันทึก...';
+    }
+
+    try {
+        console.log("💾 กำลังเริ่มกระบวนการบันทึกแก้ไข...");
+
+        // 1. ดึงข้อมูลจากฟอร์ม (ต้องใช้ getEditFormData ตัวล่าสุดที่แก้ไป)
+        const formData = getEditFormData();
+        
+        if (!formData) {
+            throw new Error("ไม่สามารถอ่านข้อมูลจากฟอร์มได้ กรุณาตรวจสอบข้อมูล");
+        }
+        
+        // ตรวจสอบข้อมูลจำเป็น
+        if (!validateEditForm(formData)) {
+            // ถ้า Validate ไม่ผ่าน ให้คืนค่าปุ่มกดและหยุดทำงาน
+            if (btn) {
+                btn.disabled = false;
+                btn.classList.remove('opacity-50', 'cursor-not-allowed');
+                btn.innerHTML = 'บันทึกการแก้ไข';
+            }
+            return;
+        }
+
+        // 2. ส่งข้อมูลไปอัปเดตที่ Server หลัก (Google Apps Script -> Google Sheets)
+        // เพื่อให้ข้อมูลในไฟล์ Excel/CSV อัปเดตตาม
+        console.log("📤 Sending update to GAS...");
+        const result = await apiCall('POST', 'updateRequest', formData);
+
+        if (result.status === 'success') {
+            
+            // 3. [ส่วนสำคัญ] ทำ Backup ลง Firebase ทันที (Client-side Backup)
+            // เราจะบันทึกข้อมูลชุดเต็ม (รวม attendees) ลง Firestore เพื่อให้ openEditPage ครั้งหน้าดึงข้อมูลนี้ไปใช้ได้
+            if (typeof db !== 'undefined' && typeof firebase !== 'undefined') {
+                try {
+                    // แปลง ID ให้เป็น Format ของ Document ID (เช่น บค001/2568 -> บค001-2568)
+                    const docId = formData.requestId.replace(/[\/\\\:\.]/g, '-');
+                    
+                    // เตรียมข้อมูลที่จะ Backup
+                    const firebaseData = {
+                        ...formData,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                        isSynced: true, // ระบุว่าข้อมูลนี้ตรงกับ Server แล้ว
+                        // สำคัญ: บังคับบันทึก attendees เป็น Array ลงไป
+                        attendees: formData.attendees || [] 
+                    };
+
+                    // บันทึกแบบ Merge (ทับข้อมูลเดิมที่มีอยู่)
+                    await db.collection('requests').doc(docId).set(firebaseData, { merge: true });
+                    console.log("✅ Backup data (including attendees) to Firebase completed.");
+
+                } catch (fbError) {
+                    console.warn("⚠️ Firebase Backup Warning:", fbError);
+                    // ไม่ throw error ออกไป เพราะถือว่าการบันทึกหลัก (GAS) สำเร็จแล้ว
+                }
+            }
+
+            // แจ้งเตือนความสำเร็จ
+            showAlert("สำเร็จ", "บันทึกข้อมูลการแก้ไขเรียบร้อยแล้ว");
+            
+            // เคลียร์ Cache เพื่อให้หน้า Dashboard โหลดข้อมูลใหม่ที่อัปเดตแล้ว
+            if (typeof clearRequestsCache === 'function') {
+                clearRequestsCache();
+            }
+            
+            // กลับไปหน้า Dashboard และโหลดข้อมูลใหม่
+            await fetchUserRequests(); // รอให้โหลดเสร็จก่อนค่อยเปลี่ยนหน้า
+            switchPage('dashboard-page');
+
+        } else {
+            throw new Error(result.message || "Server ตอบกลับผิดพลาด");
+        }
+
+    } catch (error) {
+        console.error("Save Edit Error:", error);
+        showAlert("บันทึกไม่สำเร็จ", "เกิดข้อผิดพลาด: " + error.message);
+    } finally {
+        // คืนค่าปุ่มกด (กรณีเกิด Error)
+        if (btn) {
+            btn.disabled = false;
+            btn.classList.remove('opacity-50', 'cursor-not-allowed');
+            btn.innerHTML = 'บันทึกการแก้ไข';
+        }
+    }
+}
+// ฟังก์ชันสำหรับวิเคราะห์เงื่อนไขและเปิด Modal แนบไฟล์
+// ฟังก์ชันสำหรับวิเคราะห์เงื่อนไขและเปิด Modal แนบไฟล์ (เฉพาะกรณีไม่เบิกเงิน)
+// ฟังก์ชันสำหรับวิเคราะห์เงื่อนไขและเปิด Modal แนบไฟล์ (ปรับปรุงเงื่อนไขรองผู้อำนวยการ)
+function openAttachmentModal(requestId, formData) {
+    document.getElementById('attach-request-id').value = requestId;
+    
+    // 1. ตรวจสอบเงื่อนไขวัน จันทร์-ศุกร์
+    const start = new Date(formData.startDate);
+    const end = new Date(formData.endDate);
+    let hasWeekday = false;
+    
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const day = d.getDay();
+        if (day >= 1 && day <= 5) { 
+            hasWeekday = true; 
+            break; 
+        }
+    }
+
+    // 2. ตรวจสอบว่าเป็น "รองผู้อำนวยการ" และ "เดินทางคนเดียว" หรือไม่
+    const isViceDirector = formData.requesterPosition.includes("รองผู้อำนวยการ");
+    const isAlone = (!formData.attendees || formData.attendees.length === 0);
+    
+    // เงื่อนไขการแสดงฟิลด์ "บันทึกขอแลกคาบสอน":
+    // ต้องเป็นวัน จ-ศ และ (ต้องไม่ใช่รองผู้อำนวยการที่ไปคนเดียว)
+    const showExchangeField = hasWeekday && !(isViceDirector && isAlone);
+
+    // จัดการการแสดงผลฟิลด์ขอแลกคาบ
+    const exchangeField = document.getElementById('field-exchange-class');
+    const exchangeInput = document.getElementById('file-exchange');
+    
+    if (showExchangeField) {
+        exchangeField.classList.remove('hidden');
+        exchangeInput.required = true;
+    } else {
+        exchangeField.classList.add('hidden');
+        exchangeInput.required = false;
+        exchangeInput.value = ""; // ล้างค่าไฟล์ที่อาจค้างอยู่
+    }
+
+    // 3. จัดการฟิลด์รถส่วนตัว (เงื่อนไขเดิม)
+    const carField = document.getElementById('field-private-car');
+    const carInput = document.getElementById('file-car');
+    if (formData.vehicleOption === 'private') {
+        carField.classList.remove('hidden');
+        carInput.required = true;
+    } else {
+        carField.classList.add('hidden');
+        carInput.required = false;
+        carInput.value = "";
+    }
+
+    // แสดง Modal ขั้นตอนที่ 2
+    document.getElementById('upload-attachments-modal').style.display = 'flex';
+}
+
+// ฟังก์ชันสำหรับรวบรวมไฟล์และส่งไป Merge ที่ Cloud Run
+async function handleAttachmentsSubmit(e) {
+    e.preventDefault();
+    const requestId = document.getElementById('attach-request-id').value;
+    const user = getCurrentUser();
+    
+    toggleLoader('merge-files-button', true);
+
+    try {
+        const formData = new FormData();
+        // 1. ใส่ไฟล์หลักที่สร้างมา
+        formData.append('files', window.currentMainPDF, '01_บันทึกข้อความขอไปราชการ.pdf');
+
+        // 2. ใส่ไฟล์ประกอบตามลำดับ
+        const addFile = (id, label) => {
+            const input = document.getElementById(id);
+            if (input && input.files[0]) {
+                formData.append('files', input.files[0], label + "_" + input.files[0].name);
+            }
+        };
+
+        addFile('file-exchange', '02_บันทึกขอแลกคาบ');
+        addFile('file-original', '03_หนังสือต้นเรื่อง');
+        addFile('file-car', '04_บันทึกขอใช้รถส่วนตัว');
+        
+        const others = document.getElementById('file-others').files;
+        for (let i = 0; i < others.length; i++) {
+            formData.append('files', others[i], `05_อื่นๆ_${i}_${others[i].name}`);
+        }
+
+        // 3. เรียก Cloud Run เพื่อ Merge PDF
+        const cloudRunBaseUrl = PDF_ENGINE_CONFIG.BASE_URL;
+        const response = await fetch(`${cloudRunBaseUrl}/pdf/merge`, {
+            method: "POST",
+            body: formData
+        });
+
+        if (!response.ok) throw new Error("Cloud Run Merge Error");
+        
+        const mergedBlob = await response.blob();
+        
+        // 4. อัปโหลดไฟล์ที่รวมแล้วลง Drive
+        const base64 = await blobToBase64(mergedBlob);
+        const uploadResult = await apiCall('POST', 'uploadGeneratedFile', {
+            data: base64,
+            filename: `เอกสารรวม_${requestId.replace(/\//g,'-')}.pdf`,
+            mimeType: 'application/pdf',
+            username: user.username
+        });
+
+        if (uploadResult.status === 'success') {
+            const finalUrl = uploadResult.url;
+            
+            // อัปเดต Firestore
+            const safeId = requestId.replace(/[\/\\:\.]/g, '-');
+            await db.collection('requests').doc(safeId).set({
+                pdfUrl: finalUrl,
+                status: 'รอการตรวจสอบ'
+            }, { merge: true });
+
+            document.getElementById('upload-attachments-modal').style.display = 'none';
+            showAlert('สำเร็จ', 'รวมไฟล์และส่งข้อมูลเรียบร้อยแล้ว');
+            window.open(finalUrl, '_blank');
+            
+            clearRequestsCache();
+            await fetchUserRequests();
+            switchPage('dashboard-page');
+        }
+
+    } catch (error) {
+        console.error(error);
+        showAlert('ผิดพลาด', 'เกิดข้อผิดพลาดในการรวมไฟล์: ' + error.message);
+    } finally {
+        toggleLoader('merge-files-button', false);
+    }
 }

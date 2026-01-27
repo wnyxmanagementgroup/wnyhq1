@@ -49,7 +49,33 @@
                     </p>
                 </div>
             </div>
+            <div id="reminder-modal" class="modal" style="display: none; z-index: 100;">
+    <div class="modal-content animate-bounce-in max-w-md mx-auto bg-white rounded-2xl shadow-2xl overflow-hidden">
+        <div class="bg-gradient-to-r from-indigo-600 to-blue-500 p-4 text-center">
+            <div class="mx-auto bg-white w-16 h-16 rounded-full flex items-center justify-center mb-2 shadow-lg">
+                <span class="text-3xl">📢</span>
+            </div>
+            <h3 class="text-xl font-bold text-white">แจ้งเตือนสำคัญ</h3>
+        </div>
+        
+        <div class="p-6 text-center">
+            <h4 class="text-lg font-bold text-gray-800 mb-2">อย่าลืมส่งบันทึกข้อความ!</h4>
+            <p class="text-gray-600 mb-4 text-sm">
+                เมื่อท่านสร้างรายการในระบบแล้ว<br>
+                กรุณา <span class="text-red-500 font-bold underline">ปริ้นเอกสาร</span> และส่งงานสารบรรณ<br>
+                หรืออัปโหลดไฟล์ที่ลงนามแล้วเข้าระบบทุกครั้ง
+            </p>
             
+            <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800 mb-4">
+                "การส่งเอกสารเข้าระบบ ช่วยให้การออกคำสั่งรวดเร็วยิ่งขึ้น"
+            </div>
+
+            <button id="close-reminder-modal" class="btn btn-primary w-full py-3 text-lg shadow-lg transform transition hover:scale-105">
+                รับทราบ / เข้าใช้งานระบบ
+            </button>
+        </div>
+    </div>
+</div>
             <div class="w-full mb-10">
                 <div class="p-6 rounded-2xl shadow-xl main-container bg-white/80 backdrop-blur-sm border border-white/50">
                     <div class="flex flex-wrap justify-between items-end mb-4 border-b pb-4 border-gray-200 gap-4">
@@ -94,16 +120,16 @@
                     </div>
                 </div>
             </div>
-
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div class="info-section">
-                    <h3 class="text-lg font-bold text-blue-700 mb-4">1. การขออนุญาตไปราชการ (เบิกค่าใช้จ่าย)</h3>
+                    <h3 class="text-lg font-bold text-blue-700 mb-4">1. การขออนุญาตไปราชการ (เบิกค่าใช้จ่าย) ปริ้นส่ง 1 ชุด</h3>
                     <p class="font-medium mb-2">เอกสารที่ต้องเตรียม:</p>
                     <ul class="list-disc pl-5 mb-2">
-                        <li>ร่างบันทึกข้อความ และกดส่งร่างข้อความในระบบ</li> 
-                        <p class="font-medium mb-2">(ปริ้นส่ง 1 ชุด)</p>
+                        <li>ร่างบันทึกข้อความในระบบ ปริ้นบันทึกออกมาเซ็นตามปกติ</li> 
+                        <p class="font-medium mb-2">(ปริ้นส่ง 1 ชุดเท่านั้น)</p>
                         <li>หนังสือราชการต้นเรื่อง</li>
                         <li>บันทึกขออนุญาตวิชาการ (กรณีที่มีนักเรียนไปด้วย)</li>
+                        <li>บันทึกขอแลกคาบสอน (เซ็นเฉพาะตนเองและหัวหน้าหมวด)</li>
                     </ul>
                     <div class="info-note">
                         <p class="font-medium">กรณีที่นำนักเรียนไปพักค้างคืนส่งเอกสารเพิ่มเติม:</p> 
@@ -118,11 +144,12 @@
                 
                 <div class="info-section">
                     <h3 class="text-lg font-bold text-green-700 mb-4">2. การขออนุญาตไปราชการ (ไม่เบิกค่าใช้จ่าย)</h3>
-                    <p class="font-medium mb-2">เอกสารที่ต้องเตรียม:</p>
+                    <p class="font-medium mb-2">เอกสารที่ต้องเตรียม:(แนบไฟล์ในระบบ)</p>
                     <ul class="list-disc pl-5 mb-2">
                         <li>ร่างบันทึกข้อความ กดส่งร่างข้อความในระบบ (อัพโหลดไฟล์ที่เซ็นเสร็จแล้ว)</li>
                         <li>หนังสือราชการต้นเรื่อง</li>
                         <li>บันทึกขออนุญาตวิชาการ (กรณีที่มีนักเรียนไปด้วย)</li>
+                        <li>บันทึกขอแลกคาบสอน(เซ็นเฉพาะตนเองและหัวหน้าหมวด)</li>
                     </ul>
                     <div class="info-note">
                         <p class="font-medium">กรณีที่นำนักเรียนไปพักค้างคืนส่งเอกสารเพิ่มเติม:</p> 
@@ -136,47 +163,47 @@
                 </div>
             </div>
             
-            <footer class="text-center text-sm text-gray-500 mt-8 pb-4">
+     <footer class="text-center text-sm text-gray-500 mt-8 pb-4">
                 <p>จัดทำโดยกลุ่มบริหารงานบุคคล โรงเรียนวังน้ำเย็นวิทยาคม </p>
                 <p>พัฒนาระบบโดย ครูกีรติ ประสพพรรังสี </p>
             </footer>
         </div>
 
         <div id="main-app" class="hidden">
-            <header class="relative z-50 p-4 rounded-xl mb-6 flex flex-wrap justify-between items-center gap-4 bg-white/90 backdrop-blur shadow-sm border border-white/50">
-                <div class="flex items-center gap-4">
-                    <img src="https://upload.wikimedia.org/wikipedia/commons/1/15/Wny-logo.png" alt="Logo" class="h-12 w-12 object-contain">
-                    <div>
-                        <h2 class="text-xl font-bold text-gray-800">ยินดีต้อนรับ, <span id="user-fullname">...</span></h2>
-                        <p class="text-sm text-gray-500">ตำแหน่ง: <span id="user-position">...</span></p>
-                    </div>
+        <header class="relative z-50 p-4 rounded-xl mb-6 flex flex-wrap justify-between items-center gap-4 bg-white/90 backdrop-blur shadow-sm border border-white/50">
+            <div class="flex items-center gap-4">
+                <img src="https://upload.wikimedia.org/wikipedia/commons/1/15/Wny-logo.png" alt="Logo" class="h-12 w-12 object-contain">
+                <div>
+                    <h2 class="text-xl font-bold text-gray-800">ยินดีต้อนรับ, <span id="user-fullname">...</span></h2>
+                    <p class="text-sm text-gray-500">ตำแหน่ง: <span id="user-position">...</span></p>
                 </div>
-                
-                <div class="flex items-center gap-4">
-                    <div class="relative">
-                        <button id="notification-btn" class="p-2 rounded-full hover:bg-gray-100 transition relative">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                            </svg>
-                            <span id="notification-badge" class="hidden absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-red-100 transform translate-x-1/4 -translate-y-1/4 bg-red-600 rounded-full">0</span>
-                        </button>
+            </div>
+            
+            <div class="flex items-center gap-4">
+                <div class="relative">
+                    <button id="notification-btn" class="p-2 rounded-full hover:bg-gray-100 transition relative">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                        </svg>
+                        <span id="notification-badge" class="hidden absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-red-100 transform translate-x-1/4 -translate-y-1/4 bg-red-600 rounded-full">0</span>
+                    </button>
 
-                        <div id="notification-dropdown" class="hidden absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-2xl border border-gray-100 z-50 overflow-hidden">
-                            <div class="bg-gray-50 px-4 py-3 border-b border-gray-100 flex justify-between items-center">
-                                <h3 class="font-bold text-gray-700">รายการค้างส่ง (Pending)</h3>
-                                <span id="notification-count-text" class="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">0 รายการ</span>
-                            </div>
-                            <div id="notification-list" class="max-h-64 overflow-y-auto divide-y divide-gray-50">
-                                <div class="p-4 text-center text-sm text-gray-500">ไม่มีรายการค้างส่ง</div>
-                            </div>
+                    <div id="notification-dropdown" class="hidden absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-2xl border border-gray-100 z-50 overflow-hidden">
+                        <div class="bg-gray-50 px-4 py-3 border-b border-gray-100 flex justify-between items-center">
+                            <h3 class="font-bold text-gray-700">รายการค้างส่ง (Pending)</h3>
+                            <span id="notification-count-text" class="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">0 รายการ</span>
+                        </div>
+                        <div id="notification-list" class="max-h-64 overflow-y-auto divide-y divide-gray-50">
+                            <div class="p-4 text-center text-sm text-gray-500">ไม่มีรายการค้างส่ง</div>
                         </div>
                     </div>
-
-                    <button id="logout-button" class="btn btn-danger btn-sm">ออกจากระบบ</button>
                 </div>
-            </header>
 
-            <div id="navigation" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mb-6">
+                <button id="logout-button" class="btn btn-danger btn-sm">ออกจากระบบ</button>
+            </div>
+        </header>
+
+            <div id="navigation" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4 mb-6">
                 <button data-target="dashboard-page" id="user-nav-dashboard" class="nav-button p-4 text-center bg-white rounded-lg shadow hover:bg-indigo-50 transition active">
                     <h3 class="font-bold text-indigo-700">แดชบอร์ด</h3>
                     <p class="text-xs text-gray-500">ภาพรวมของคุณ</p>
@@ -189,6 +216,10 @@
                     <h3 class="font-bold text-orange-700">แก้ไขคำขอ</h3>
                     <p class="text-xs text-gray-500">แก้ไขคำขอไปราชการ</p>
                 </button>
+                 <button data-target="command-generation-page" id="admin-nav-command" class="nav-button p-4 text-center bg-white rounded-lg shadow hover:bg-indigo-50 transition hidden">
+                    <h3 class="font-bold text-purple-700">จัดการบันทึกและคำสั่ง</h3>
+                    <p class="text-xs text-gray-500">สำหรับผู้ดูแลระบบ</p>
+                </button>
                  <button data-target="stats-page" id="nav-stats" class="nav-button p-4 text-center bg-white rounded-lg shadow hover:bg-indigo-50 transition">
                     <h3 class="font-bold text-green-700">สถิติข้อมูล</h3>
                     <p class="text-xs text-gray-500">สรุปภาพรวม</p>
@@ -197,18 +228,38 @@
                     <h3 class="font-bold text-indigo-700">ข้อมูลส่วนตัว</h3>
                     <p class="text-xs text-gray-500">จัดการข้อมูลของคุณ</p>
                 </button>
+                <button id="admin-nav-users" data-target="admin-users-page" class="nav-button p-4 text-center bg-white rounded-lg shadow hover:bg-indigo-50 transition hidden">
+                    <h3 class="font-bold text-red-700">จัดการผู้ใช้</h3>
+                    <p class="text-xs text-gray-500">ผู้ใช้ทั้งหมด</p>
+                </button>
             </div>
-            
+            <div id="admin-actions" class="mb-4 flex gap-2">
+                 <button id="admin-sync-btn" class="btn bg-indigo-600 text-white shadow-lg hover:bg-indigo-700 transition">
+                    🔄 Sync ข้อมูลสู่ Firebase
+                </button>
+            </div>
             <main id="page-content" class="p-6 sm:p-8 rounded-2xl">
-                <div id="dashboard-page" class="page-view">
-                    <h2 class="text-2xl font-bold mb-4">รายการคำขอไปราชการของฉัน</h2>
-                    <input type="text" id="search-requests" class="form-input mb-4" placeholder="ค้นหาตามวัตถุประสงค์, สถานที่, เลขอ้างอิง...">
-                    <div id="requests-loader" class="text-center p-8">
-                        <div class="loader mx-auto"></div><p class="mt-4">กำลังโหลดข้อมูลคำขอ...</p>
-                    </div>
-                    <div id="requests-list" class="hidden"></div>
-                    <p id="no-requests-message" class="text-center text-gray-500 p-8 hidden">ไม่พบรายการคำขอของคุณ</p>
-                </div>
+               <div id="dashboard-page" class="page-view hidden">
+    
+    <h2 class="text-2xl font-bold mb-4">รายการคำขอไปราชการของฉัน</h2>
+    
+    <div class="flex flex-col sm:flex-row gap-2 mb-4">
+        <select id="user-year-select" class="form-input sm:w-1/3 cursor-pointer bg-blue-50 border-blue-200 text-blue-800 font-bold"></select>
+        <input type="text" id="search-requests" class="form-input w-full" placeholder="ค้นหา...">
+    </div>
+
+    <div id="requests-loader" class="hidden text-center py-8">
+        <div class="loader mx-auto mb-2"></div>
+        <p class="text-gray-500">กำลังโหลดข้อมูล...</p>
+    </div>
+
+    <div id="requests-list" class="space-y-4"></div>
+
+    <div id="no-requests-message" class="hidden text-center py-8 text-gray-500 bg-gray-50 rounded-lg border border-gray-200 mt-4">
+        <p>ไม่พบรายการคำขอในปีงบประมาณนี้</p>
+    </div>
+
+</div>
 
                 <div id="form-page" class="page-view hidden">
                      <form id="request-form">
@@ -265,9 +316,10 @@
                                     <label for="form-license-plate" class="form-label">หมายเลขทะเบียน</label>
                                     <input type="text" id="form-license-plate" class="form-input w-full md:w-1/2"></div>
                                     <label class="block"><input type="checkbox" name="vehicle_option" value="public" class="rounded">พาหนะอื่นๆ</label>
-                                    <div id="public-vehicle-details" class="pl-6 mt-2 hidden">
-                                    <label for="form-public-vehicle-details" class="form-label">ระบุพาหนะอื่นๆ</label><input type="text" id="form-public-vehicle-details" class="form-input w-full md:w-1/2"></div>
-                             </div>
+                                    <div id="edit-public-vehicle-details-container" class="pl-6 mt-2 hidden">
+    <label for="edit-public-vehicle-details" class="form-label">ระบุพาหนะอื่นๆ</label>
+    <input type="text" id="edit-public-vehicle-details" class="form-input w-full md:w-1/2">
+</div>
                          </fieldset>
                           <fieldset id="signer-fieldset" class="border p-4 rounded-lg mb-6"><legend>5. ข้อมูลผู้ลงนาม</legend>
                                 <div class="mb-4">
@@ -387,7 +439,6 @@
                                 <div class="flex items-center gap-2"><label><input type="checkbox" name="edit-expense_item" id="edit-expense_other_check" data-item-name="ค่าใช้จ่ายอื่นๆ" class="rounded"> ค่าใช้จ่ายอื่นๆ</label><input type="text" id="edit-expense_other_text" class="form-input text-sm p-1 flex-grow" placeholder="ระบุ"></div>
                             </div>
                             <div id="edit-total-expense-container" class="mt-4 hidden"><label for="edit-total-expense" class="form-label">รวมเป็นจำนวนเงิน (บาท)</label><input type="number" id="edit-total-expense" class="form-input w-full md:w-1/2" placeholder="0.00" step="0.01"></div>
-                        </fieldset>
                         
                        <fieldset class="border p-4 rounded-lg mb-6">
                             <legend>3. การเดินทาง</legend>
@@ -529,6 +580,174 @@
                         </div>
                     </div>
                 </div>
+                <div id="admin-command-page" class="page-view hidden">
+                    <h2 class="text-2xl font-bold mb-6">ออกคำสั่งไปราชการ</h2>
+                <div id="admin-command-info"></div>
+                <div class="flex gap-4 mt-6">
+                <button id="generate-command-solo" class="btn btn-primary">ออกคำสั่งเดี่ยว</button>
+                <button id="generate-command-group-small" class="btn btn-primary">ออกคำสั่งกลุ่มเล็ก</button>
+                <button id="generate-command-group-large" class="btn btn-primary">ออกคำสั่งกลุ่มใหญ่</button>
+                </div>
+                </div>
+                <div id="admin-generate-command-page" class="page-view hidden">
+    <div class="flex justify-between items-center mb-6">
+        <h2 class="text-2xl font-bold">แก้ไขและออกคำสั่งไปราชการ</h2>
+        <button id="back-to-admin-command" class="btn bg-gray-500 text-white">← กลับสู่หน้าจัดการ</button>
+    </div>
+    
+    <form id="admin-command-form">
+        <input type="hidden" id="admin-command-request-id">
+        
+        <fieldset class="border p-4 rounded-lg mb-6 bg-white/50">
+            <legend>ข้อมูลทั่วไป (แก้ไขได้)</legend>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="form-label">รหัสคำขอ</label>
+                    <input type="text" id="admin-command-request-id-display" class="form-input bg-gray-100 text-gray-500" readonly>
+                </div>
+                <div>
+                    <label class="form-label">วันที่เอกสาร</label>
+                    <input type="date" id="admin-command-doc-date" class="form-input">
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="form-label">ชื่อผู้ขอ</label>
+                    <input type="text" id="admin-command-requester-name" class="form-input">
+                </div>
+                <div>
+                    <label class="form-label">ตำแหน่ง</label>
+                    <input type="text" id="admin-command-requester-position" class="form-input">
+                </div>
+            </div>
+            <div class="mb-4">
+                <label class="form-label">สถานที่ไปราชการ</label>
+                <input type="text" id="admin-command-location" class="form-input">
+            </div>
+            <div class="mb-4">
+                <label class="form-label">วัตถุประสงค์</label>
+                <textarea id="admin-command-purpose" rows="2" class="form-input"></textarea>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="form-label">วันที่เริ่มต้น</label>
+                    <input type="date" id="admin-command-start-date" class="form-input">
+                </div>
+                <div>
+                    <label class="form-label">วันที่สิ้นสุด</label>
+                    <input type="date" id="admin-command-end-date" class="form-input">
+                </div>
+            </div>
+        </fieldset>
+        
+        <fieldset class="border p-4 rounded-lg mb-6 bg-white/50">
+            <legend>ผู้ร่วมเดินทาง (แก้ไขได้)</legend>
+            <div id="admin-command-attendees-list"></div>
+            <button type="button" id="admin-add-attendee-btn" class="btn btn-sm btn-success mt-2">+ เพิ่มผู้ร่วมเดินทาง</button>
+        </fieldset>
+        
+        <fieldset class="border p-4 rounded-lg mb-6 bg-gray-100">
+            <legend class="text-gray-500 text-sm">ข้อมูลประกอบ (แก้ไขที่ต้นทาง)</legend>
+            <div id="admin-command-expense-info" class="text-sm text-gray-600 mb-2"></div>
+            <div id="admin-command-vehicle-info" class="text-sm text-gray-600"></div>
+            <input type="hidden" id="admin-expense-option">
+            <input type="hidden" id="admin-expense-items">
+            <input type="hidden" id="admin-total-expense">
+            <input type="hidden" id="admin-vehicle-option">
+            <input type="hidden" id="admin-license-plate">
+        </fieldset>
+        
+        <fieldset class="border p-4 rounded-lg mb-6 bg-blue-50 border-blue-200">
+            <legend>รูปแบบคำสั่ง</legend>
+            <div class="space-y-3">
+                <div>
+                    <input type="radio" id="admin-command-type-solo" name="admin-command-type" value="solo" class="h-4 w-4">
+                    <label for="admin-command-type-solo" class="ml-2">คำสั่งเดี่ยว (1 คน)</label>
+                </div>
+                <div>
+                    <input type="radio" id="admin-command-type-group-small" name="admin-command-type" value="groupSmall" class="h-4 w-4">
+                    <label for="admin-command-type-group-small" class="ml-2">คำสั่งกลุ่มเล็ก (2-5 คน)</label>
+                </div>
+                <div>
+                    <input type="radio" id="admin-command-type-group-large" name="admin-command-type" value="groupLarge" class="h-4 w-4">
+                    <label for="admin-command-type-group-large" class="ml-2">คำสั่งกลุ่มใหญ่ (6 คนขึ้นไป)</label>
+                </div>
+            </div>
+        </fieldset>
+        
+        <div class="flex justify-center gap-4 mt-10 border-t pt-6 border-gray-200">
+            <button type="button" id="admin-generate-command-button" class="btn btn-primary text-lg shadow-lg">
+                <div id="admin-generate-command-loader" class="loader hidden"></div>
+                <span id="admin-generate-command-button-text">บันทึกการแก้ไขและสร้างคำสั่ง</span>
+            </button>
+        </div>
+    </form>
+    
+    <div id="admin-command-result" class="hidden mt-6 p-6 text-center bg-green-50 rounded-xl border border-green-200">
+        <h3 id="admin-command-result-title" class="font-bold text-lg text-green-800"></h3>
+        <p id="admin-command-result-message" class="mt-2 text-gray-700"></p>
+        <div class="flex justify-center flex-wrap gap-4 mt-4">
+            <a id="admin-command-result-link" href="#" target="_blank" class="btn btn-success transform hover:scale-105 transition">เปิดไฟล์คำสั่ง</a>
+            <button onclick="switchPage('command-generation-page')" class="btn bg-gray-500 text-white">กลับหน้าจัดการ</button>
+        </div>
+    </div>
+</div>
+                <div id="admin-users-page" class="page-view hidden">
+                    <h2 class="text-2xl font-bold mb-6">จัดการผู้ใช้</h2>
+                    
+                    <div class="mb-6 flex flex-wrap gap-4">
+                        <button id="add-user-button" class="btn btn-primary">เพิ่มผู้ใช้</button>
+                        <button id="download-user-template-button" class="btn bg-green-500 text-white">ดาวน์โหลดแม่แบบ</button>
+                        <button id="import-users-button" class="btn bg-blue-500 text-white">นำเข้าจาก Excel</button>
+                        <input type="file" id="user-excel-input" class="hidden" accept=".xlsx, .xls">
+                    </div>
+                    
+                    <div id="users-list" class="bg-white rounded-lg shadow">
+                        <div class="p-4 border-b">
+                            <h3 class="font-bold">รายชื่อผู้ใช้ทั้งหมด</h3>
+                        </div>
+                        <div id="users-content" class="p-4">
+                            <div class="text-center p-8">
+                                <div class="loader mx-auto"></div>
+                                <p class="mt-4">กำลังโหลดข้อมูลผู้ใช้...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="command-generation-page" class="page-view hidden">
+                    <h2 class="text-2xl font-bold mb-6">จัดการบันทึกและคำสั่ง</h2>
+                    
+                    <div class="flex gap-4 mb-6">
+                        <button id="admin-view-requests-tab" class="tab-button active">คำขอไปราชการ</button>
+                        <button id="admin-view-memos-tab" class="tab-button">บันทึกข้อความ</button>
+                    </div>
+                    
+                    <div id="admin-requests-view">
+    
+    <div class="flex flex-col sm:flex-row gap-2 mb-4">
+        <select id="admin-year-select" class="form-input sm:w-1/3 cursor-pointer bg-purple-50 border-purple-200 text-purple-800 font-bold">
+            </select>
+        <input type="text" id="admin-search-requests" class="form-input w-full" placeholder="ค้นหาคำขอ...">
+    </div>
+
+    <div id="admin-requests-list" class="space-y-4">
+        </div>
+
+</div>
+                    
+                    <div id="admin-memos-view" class="hidden">
+                        <div class="mb-4">
+                            <input type="text" id="admin-search-memos" class="form-input" placeholder="ค้นหาบันทึกข้อความ...">
+                        </div>
+                        <div id="admin-memos-list" class="space-y-4">
+                            <div class="text-center p-8">
+                                <div class="loader mx-auto"></div>
+                                <p class="mt-4">กำลังโหลดข้อมูลบันทึกข้อความ...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 
                 <div id="stats-page" class="page-view hidden">
                     <h2 class="text-2xl font-bold mb-6">สถิติข้อมูล</h2>
@@ -540,7 +759,13 @@
                             </svg>
                             รีเฟรชข้อมูล
                         </button>
-                        </div>
+                        <button id="export-stats" class="btn bg-green-500 text-white">
+                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                            </svg>
+                            ส่งออกรายงาน
+                        </button>
+                    </div>
 
                     <div id="stats-overview" class="space-y-6">
                         <div class="text-center p-8">
@@ -642,7 +867,46 @@
                 </div>
             </div>
         </div>
+        <div id="upload-attachments-modal" class="modal" style="display: none; z-index: 60;">
+    <div class="modal-content max-w-2xl bg-white p-6 rounded-2xl shadow-2xl">
+        <div class="border-b pb-3 mb-4">
+            <h3 class="text-xl font-bold text-indigo-700">ขั้นตอนที่ 2: แนบเอกสารประกอบ</h3>
+            <p class="text-sm text-gray-500">กรุณาแนบไฟล์ PDF ตามรายการที่ระบบกำหนด</p>
+        </div>
+        
+        <form id="attachments-form" class="space-y-4">
+            <input type="hidden" id="attach-request-id">
+            
+            <div id="field-exchange-class" class="hidden p-3 border rounded-lg bg-orange-50 border-orange-200">
+                <label class="form-label text-orange-800">1. บันทึกขอแลกคาบสอน (จำเป็น *)</label>
+                <p class="text-xs text-orange-600 mb-2">เนื่องจากมีการไปราชการในวันทำการ (จันทร์-ศุกร์)</p>
+                <input type="file" id="file-exchange" class="form-input bg-white" accept="application/pdf">
+            </div>
 
+            <div class="p-3 border rounded-lg bg-blue-50 border-blue-200">
+                <label class="form-label text-blue-800">2. หนังสือต้นเรื่อง / บันทึกวิชาการ (จำเป็น *)</label>
+                <input type="file" id="file-original" class="form-input bg-white" accept="application/pdf" required>
+            </div>
+
+            <div id="field-private-car" class="hidden p-3 border rounded-lg bg-green-50 border-green-200">
+                <label class="form-label text-green-800">3. บันทึกขอใช้รถส่วนตัว (จำเป็น *)</label>
+                <input type="file" id="file-car" class="form-input bg-white" accept="application/pdf">
+            </div>
+
+            <div class="p-3 border rounded-lg bg-gray-50 border-gray-200">
+                <label class="form-label text-gray-700">4. เอกสารอื่นๆ (ถ้ามี)</label>
+                <input type="file" id="file-others" class="form-input bg-white" accept="application/pdf" multiple>
+            </div>
+
+            <div class="flex justify-end gap-3 pt-4 border-t">
+                <button type="submit" id="merge-files-button" class="btn btn-primary w-full py-3 text-lg shadow-lg">
+                    <div id="merge-loader" class="loader hidden"></div>
+                    <span id="merge-button-text">ประมวลผลรวมไฟล์และส่งคำขอ</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
         <div id="send-memo-modal" class="modal">
             <div class="modal-content">
                 <div class="flex justify-between items-center mb-4">
@@ -679,6 +943,139 @@
             </div>
         </div>
 
+        <div id="command-approval-modal" class="modal">
+            <div class="modal-content">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-xl font-bold">อนุมัติคำสั่งไปราชการ</h3>
+                    <button id="command-approval-modal-close-button" class="text-gray-500 hover:text-gray-700">&times;</button>
+                </div>
+                <form id="command-approval-form">
+                    <input type="hidden" id="command-request-id">
+                    <div class="mb-4">
+                        <label class="form-label">เลือกรูปแบบคำสั่ง</label>
+                        <div class="space-y-2">
+                            <div>
+                                <input type="radio" id="command_type_solo" name="command_type" value="solo" class="h-4 w-4">
+                                <label for="command_type_solo" class="ml-2">คำสั่งเดี่ยว (1 คน)</label>
+                            </div>
+                            <div>
+                                <input type="radio" id="command_type_group_small" name="command_type" value="groupSmall" class="h-4 w-4">
+                                <label for="command_type_group_small" class="ml-2">คำสั่งกลุ่มเล็ก (2-5 คน)</label>
+                            </div>
+                            <div>
+                                <input type="radio" id="command_type_group_large" name="command_type" value="groupLarge" class="h-4 w-4">
+                                <label for="command_type_group_large" class="ml-2">คำสั่งกลุ่มใหญ่ (6 คนขึ้นไป)</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex justify-end gap-4">
+                        <button type="button" id="command-approval-cancel-button" class="btn bg-gray-500 text-white">ยกเลิก</button>
+                        <button type="submit" id="command-approval-submit-button" class="btn btn-primary">
+                            <div id="command-approval-loader" class="loader hidden"></div>
+                            <span>อนุมัติคำสั่ง</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div id="dispatch-modal" class="modal">
+            <div class="modal-content">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-xl font-bold">สร้างหนังสือส่ง</h3>
+                    <button id="dispatch-modal-close-button" class="text-gray-500 hover:text-gray-700">&times;</button>
+                </div>
+                <form id="dispatch-form">
+                    <input type="hidden" id="dispatch-request-id">
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <label for="dispatch-month" class="form-label">เดือน</label>
+                            <select id="dispatch-month" class="form-input" required>
+                                <option value="">-- เลือกเดือน --</option>
+                                <option value="มกราคม">มกราคม</option>
+                                <option value="กุมภาพันธ์">กุมภาพันธ์</option>
+                                <option value="มีนาคม">มีนาคม</option>
+                                <option value="เมษายน">เมษายน</option>
+                                <option value="พฤษภาคม">พฤษภาคม</option>
+                                <option value="มิถุนายน">มิถุนายน</option>
+                                <option value="กรกฎาคม">กรกฎาคม</option>
+                                <option value="สิงหาคม">สิงหาคม</option>
+                                <option value="กันยายน">กันยายน</option>
+                                <option value="ตุลาคม">ตุลาคม</option>
+                                <option value="พฤศจิกายน">พฤศจิกายน</option>
+                                <option value="ธันวาคม">ธันวาคม</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="dispatch-year" class="form-label">ปี พ.ศ.</label>
+                            <input type="number" id="dispatch-year" class="form-input" min="2560" max="2580" required>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <label for="command-count" class="form-label">จำนวนคำสั่ง</label>
+                            <input type="number" id="command-count" class="form-input" min="0" required>
+                        </div>
+                        <div>
+                            <label for="memo-count" class="form-label">จำนวนบันทึก</label>
+                            <input type="number" id="memo-count" class="form-input" min="0" required>
+                        </div>
+                    </div>
+                    <div class="flex justify-end gap-4">
+                        <button type="button" id="dispatch-cancel-button" class="btn bg-gray-500 text-white">ยกเลิก</button>
+                        <button type="submit" id="dispatch-submit-button" class="btn btn-primary">
+                            <div id="dispatch-loader" class="loader hidden"></div>
+                            <span>สร้างหนังสือส่ง</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div id="admin-memo-action-modal" class="modal">
+            <div class="modal-content">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-xl font-bold">จัดการบันทึกข้อความ</h3>
+                    <button id="admin-memo-action-modal-close-button" class="text-gray-500 hover:text-gray-700">&times;</button>
+                </div>
+                <form id="admin-memo-action-form">
+                    <input type="hidden" id="admin-memo-id">
+                    <div class="mb-4">
+                        <label for="admin-memo-status" class="form-label">สถานะ</label>
+                        <select id="admin-memo-status" class="form-input" required>
+                            <option value="กำลังดำเนินการ">กำลังดำเนินการ</option>
+                            <option value="รอเอกสาร (เบิก)">รอเอกสาร (เบิก)</option>
+                            <option value="เสร็จสิ้นรอออกคำสั่งไปราชการ">เสร็จสิ้นรอออกคำสั่งไปราชการ</option>
+                            <option value="นำกลับไปแก้ไข">นำกลับไปแก้ไข</option>
+                            <option value="เสร็จสิ้น/รับไฟล์ไปใช้งาน">เสร็จสิ้น/รับไฟล์ไปใช้งาน</option>
+                        </select>
+                    </div>
+                    
+                    <div id="admin-file-uploads" class="space-y-4 hidden">
+                        <div>
+                            <label class="form-label">ไฟล์บันทึกข้อความที่สมบูรณ์</label>
+                            <input type="file" id="admin-completed-memo-file" class="form-input" accept=".pdf,.doc,.docx">
+                        </div>
+                        <div>
+                            <label class="form-label">ไฟล์คำสั่งที่สมบูรณ์</label>
+                            <input type="file" id="admin-completed-command-file" class="form-input" accept=".pdf,.doc,.docx">
+                        </div>
+                        <div>
+                            <label class="form-label">ไฟล์หนังสือส่ง</label>
+                            <input type="file" id="admin-dispatch-book-file" class="form-input" accept=".pdf,.doc,.docx">
+                        </div>
+                    </div>
+                    
+                    <div class="flex justify-end gap-4">
+                        <button type="button" id="admin-memo-cancel-button" class="btn bg-gray-500 text-white">ยกเลิก</button>
+                        <button type="submit" id="admin-memo-submit-button" class="btn btn-primary">
+                            <div id="admin-memo-loader" class="loader hidden"></div>
+                            <span>อัปเดตสถานะ</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
         <div id="forgot-password-modal" class="modal">
     <div class="modal-content">
         <div class="flex justify-between items-center mb-4">
@@ -742,13 +1139,17 @@
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
 
     <script src="js/config.js"></script>          <script src="js/utils.js"></script>
     <script src="js/firebaseService.js"></script>  <script src="js/auth.js"></script>
     <script src="js/requests.js"></script>
+    <script src="js/admin.js"></script>
     <script src="js/stats.js"></script>
     <script src="js/main.js"></script>
     <script src="https://unpkg.com/pizzip@3.1.4/dist/pizzip.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/docxtemplater/3.50.0/docxtemplater.js"></script>
+</body>
+</html>
 </body>
 </html>
