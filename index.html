@@ -232,6 +232,10 @@
                     <h3 class="font-bold text-red-700">จัดการผู้ใช้</h3>
                     <p class="text-xs text-gray-500">ผู้ใช้ทั้งหมด</p>
                 </button>
+                <button data-target="vehicle-page" class="nav-button p-4 text-center bg-white rounded-lg shadow hover:bg-indigo-50 transition">
+                    <h3 class="font-bold text-green-700">บันทึกขอใช้รถ</h3>
+                    <p class="text-xs text-gray-500">จัดการข้อมูลรถส่วนตัว</p>
+                </button>
             </div>
             <div id="admin-actions" class="mb-4 flex gap-2">
                  <button id="admin-sync-btn" class="btn bg-indigo-600 text-white shadow-lg hover:bg-indigo-700 transition">
@@ -348,6 +352,18 @@
                                 </div>
                                 <div><label for="form-head-name" class="form-label">ชื่อหัวหน้ากลุ่มสาระ / หัวหน้างาน</label><input type="text" id="form-head-name" class="form-input bg-gray-200" readonly></div>
                          </fieldset>
+                         <div id="signature-section" class="mt-4 p-4 border rounded-xl bg-gray-50">
+                            <label class="form-label text-indigo-700 font-bold mb-2 flex items-center gap-2">
+                            <span>✍️</span> ลงลายมือชื่ออิเล็กทรอนิกส์ (สำหรับกรณีไม่เบิกเงินเท่านั้น)
+                            </label>
+                        <div class="bg-white border-2 border-dashed border-gray-300 rounded-lg overflow-hidden">
+                            <canvas id="signature-pad" class="w-full h-40 cursor-crosshair"></canvas>
+                        </div>
+                        <div class="flex justify-between mt-2">
+                            <button type="button" id="clear-signature" class="text-xs text-red-500 hover:underline">ล้างหน้าจอ</button>
+                             <p class="text-[10px] text-gray-400">* ใช้เมาส์หรือนิ้วเขียนลงในกรอบ</p>
+                            </div>
+                        </div>
                          <div class="text-center mt-10 border-t pt-6 border-gray-200">
                               <button type="submit" id="submit-request-button" class="btn btn-primary w-full sm:w-auto text-lg">
                                 <div id="submit-loader" class="loader hidden"></div>
@@ -789,6 +805,45 @@
                         </div>
                     </div>
                 </div>
+                <div id="vehicle-page" class="page-view hidden">
+    <div class="flex justify-between items-center mb-6">
+        <h2 class="text-2xl font-bold text-indigo-800">บันทึกขออนุญาตใช้พาหนะส่วนตัวไปราชการ</h2>
+        <button onclick="switchPage('dashboard-page')" class="btn bg-gray-500 text-white">← กลับ</button>
+    </div>
+
+    <form id="vehicle-request-form" class="space-y-6">
+        <fieldset class="border p-4 rounded-xl bg-white/50">
+            <legend class="text-indigo-600 font-bold px-2">ข้อมูลผู้ขอและพาหนะ</legend>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div><label class="form-label">ชื่อ-นามสกุล</label><input type="text" id="vh-name" class="form-input" required></div>
+                <div><label class="form-label">ตำแหน่ง</label><input type="text" id="vh-position" class="form-input" required></div>
+                <div>
+                    <label class="form-label">ประเภทพาหนะ</label>
+                    <select id="vh-type" class="form-input" required>
+                        <option value="รถยนต์">รถยนต์</option>
+                        <option value="รถจักรยานยนต์">รถจักรยานยนต์</option>
+                    </select>
+                </div>
+                <div><label class="form-label">หมายเลขทะเบียน (เช่น กข 1234 สระแก้ว)</label><input type="text" id="vh-license" class="form-input" required></div>
+            </div>
+        </fieldset>
+
+        <fieldset class="border p-4 rounded-xl bg-white/50">
+            <legend class="text-indigo-600 font-bold px-2">รายละเอียดการเดินทาง</legend>
+            <div class="space-y-4">
+                <div><label class="form-label">วัตถุประสงค์ (เนื่องจาก...)</label><textarea id="vh-reason" class="form-input" rows="2" required></textarea></div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div><label class="form-label">เดินทางไป (สถานที่/โครงการ)</label><input type="text" id="vh-destination" class="form-input" required></div>
+                    <div><label class="form-label">ณ (ตำบล/อำเภอ/จังหวัด)</label><input type="text" id="vh-location" class="form-input" required></div>
+                    <div><label class="form-label">ตั้งแต่วันที่</label><input type="date" id="vh-start" class="form-input" required></div>
+                    <div><label class="form-label">ถึงวันที่</label><input type="date" id="vh-end" class="form-input" required></div>
+                    <div><label class="form-label">ระยะทาง ไป-กลับ (กิโลเมตร)</label><input type="number" id="vh-distance" class="form-input" required></div>
+                </div>
+            </div>
+        </fieldset>
+        <div class="text-center pt-4"><button type="submit" id="vh-submit-btn" class="btn btn-primary w-full md:w-auto px-10 text-lg shadow-lg"><div class="loader hidden"></div><span>บันทึกและสร้างเอกสาร</span></button></div>
+    </form>
+</div>
             </main>
             
             <footer class="text-center text-sm text-gray-500 mt-8 pb-4">
@@ -888,10 +943,26 @@
                 <input type="file" id="file-original" class="form-input bg-white" accept="application/pdf" required>
             </div>
 
-            <div id="field-private-car" class="hidden p-3 border rounded-lg bg-green-50 border-green-200">
-                <label class="form-label text-green-800">3. บันทึกขอใช้รถส่วนตัว (จำเป็น *)</label>
-                <input type="file" id="file-car" class="form-input bg-white" accept="application/pdf">
-            </div>
+            <div id="field-private-car" class="hidden p-4 border rounded-xl bg-green-50 border-green-200 shadow-inner">
+    <label class="form-label text-green-800 flex items-center gap-2">
+        <span class="bg-green-200 p-1 rounded">🚗</span> 3. บันทึกขอใช้รถส่วนตัว (จำเป็น *)
+    </label>
+    
+    <div id="auto-found-car-msg" class="hidden my-3 p-3 bg-white border border-green-300 rounded-lg flex items-center gap-3 animate-pulse">
+        <div class="text-green-500 text-xl">✅</div>
+        <div>
+            <p class="text-xs font-bold text-green-700">ระบบพบข้อมูลการขอใช้รถที่ตรงกัน!</p>
+            <p class="text-[10px] text-green-600">ตรวจสอบจากทะเบียนและวันที่เรียบร้อยแล้ว ระบบจะแนบเอกสารให้ท่านอัตโนมัติ</p>
+        </div>
+    </div>
+
+    <div id="manual-car-upload">
+        <p class="text-[10px] text-gray-500 mb-2">* หากท่านเคยบันทึกขอใช้รถในระบบไว้แล้ว ข้อมูลจะถูกดึงมาให้อัตโนมัติ</p>
+        <input type="file" id="file-car" class="form-input bg-white" accept="application/pdf">
+    </div>
+
+    <input type="hidden" id="auto-car-pdf-url">
+</div>
 
             <div class="p-3 border rounded-lg bg-gray-50 border-gray-200">
                 <label class="form-label text-gray-700">4. เอกสารอื่นๆ (ถ้ามี)</label>
@@ -1149,6 +1220,7 @@
     <script src="js/main.js"></script>
     <script src="https://unpkg.com/pizzip@3.1.4/dist/pizzip.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/docxtemplater/3.50.0/docxtemplater.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/signature_pad@4.0.0/dist/signature_pad.umd.min.js"></script>
 </body>
 </html>
 </body>

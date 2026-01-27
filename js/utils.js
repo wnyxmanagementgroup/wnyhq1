@@ -188,4 +188,35 @@ function getStatusColor(status) {
     };
     return statusColors[status] || 'text-gray-600';
 }
+// [ใหม่] ฟังก์ชันส่งการแจ้งเตือนพร้อมลิงก์ไปยัง LINE ผ่าน Backend Cloud Run
+async function sendLineNotification(link, message, targetGroup) {
+    try {
+        console.log(`📡 Sending LINE notification to ${targetGroup}...`);
+        
+        // เรียกใช้ Endpoint ที่เราสร้างไว้ใน Cloud Run
+        const response = await fetch(`${PDF_ENGINE_CONFIG.BASE_URL}api/line/notify`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                link: link,
+                message: message,
+                target: targetGroup // ADMIN, VICE_PERSONNEL, VICE_ACADEMIC, SARABAN, DIRECTOR
+            })
+        });
 
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            console.log('✅ LINE Notification sent successfully');
+            return true;
+        } else {
+            console.warn('⚠️ LINE Notification failed:', result.message);
+            return false;
+        }
+    } catch (error) {
+        console.error('❌ Error sending LINE notification:', error);
+        return false;
+    }
+}

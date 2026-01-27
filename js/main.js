@@ -51,31 +51,58 @@ async function switchPage(targetPageId) {
         const tab = document.getElementById('admin-view-requests-tab');
         if(tab) tab.click(); 
     }
+    if (targetPageId === 'vehicle-page') {
+    const user = getCurrentUser();
+    if(user) {
+        document.getElementById('vh-name').value = user.fullName || '';
+        document.getElementById('vh-position').value = user.position || '';
+    }
+}
 }
 
-// ★★★ เพิ่มฟังก์ชันนี้ไว้ท้ายไฟล์ main.js หรือบริเวณใกล้เคียง switchPage ★★★
-function showReminderModal() {
-    // ตรวจสอบว่าเคยแสดงไปแล้วหรือยังใน Session นี้ (ถ้าต้องการให้แสดงทุกครั้งที่ Login ใหม่)
-    const hasShown = sessionStorage.getItem('loginReminderShown');
+// [แก้ไข] ระบบแจ้งเตือนรายการค้างส่ง พร้อมระบบนำทางอัตโนมัติ
+async function showReminderModal() {
+    // 1. ตรวจสอบว่ามีรายการค้างส่งจริงหรือไม่
+    const requests = allRequestsCache || [];
+    const memos = userMemosCache || [];
     
-    // ถ้ายังไม่เคยแสดง ให้แสดง (เมื่อ Login เข้ามาครั้งแรกจะแสดงแน่นอน)
-    if (!hasShown) {
-        const modal = document.getElementById('reminder-modal');
-        if (modal) {
-            modal.style.display = 'flex';
+    const pendingItems = requests.filter(req => {
+        const hasCreated = req.pdfUrl && req.pdfUrl !== '';
+        const relatedMemo = memos.find(m => m.refNumber === req.id);
+        const isCompleted = relatedMemo && (relatedMemo.status === 'เสร็จสิ้น' || relatedMemo.status === 'เสร็จสิ้น/รับไฟล์ไปใช้งาน');
+        const isFixing = relatedMemo && relatedMemo.status === 'นำกลับไปแก้ไข';
+        return hasCreated && (!isCompleted || isFixing);
+    });
+
+    // ถ้าไม่มีรายการค้างส่ง ไม่ต้องโชว์ Modal
+    if (pendingItems.length === 0) return;
+
+    // 2. แสดง Modal แจ้งเตือน
+    const modal = document.getElementById('reminder-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+        
+        const closeBtn = document.getElementById('close-reminder-modal');
+        // เปลี่ยนข้อความปุ่มให้ชัดเจน
+        closeBtn.innerHTML = `🔔 ไปที่รายการค้างส่ง (${pendingItems.length} รายการ)`;
+        
+        const newBtn = closeBtn.cloneNode(true);
+        closeBtn.parentNode.replaceChild(newBtn, closeBtn);
+        
+        newBtn.addEventListener('click', function() {
+            modal.style.display = 'none';
+            // บันทึกว่าแสดงแล้วในรอบนี้ (Session)
+            sessionStorage.setItem('loginReminderShown', 'true'); 
             
-            // ตั้งค่าปุ่มปิด
-            const closeBtn = document.getElementById('close-reminder-modal');
-            
-            // ลบ Event Listener เก่าออกก่อนเพื่อป้องกันการซ้อนทับ (Safety)
-            const newBtn = closeBtn.cloneNode(true);
-            closeBtn.parentNode.replaceChild(newBtn, closeBtn);
-            
-            newBtn.addEventListener('click', function() {
-                modal.style.display = 'none';
-                sessionStorage.setItem('loginReminderShown', 'true'); // บันทึกว่าแสดงแล้ว
-            });
-        }
+            // 3. นำทางไปหน้าส่งงานทันที
+            // เปิด Dropdown แจ้งเตือนเพื่อให้ผู้ใช้เลือกส่งไฟล์ได้ทันที
+            const notifDropdown = document.getElementById('notification-dropdown');
+            if (notifDropdown) {
+                notifDropdown.classList.remove('hidden');
+                // Scroll ไปที่ส่วนบนสุดของหน้าจอเพื่อความชัดเจน
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        });
     }
 }
 
@@ -113,51 +140,33 @@ function setupEventListeners() {
     
     // --- Modals (General) ---
     document.getElementById('public-attendee-modal-close-button')?.addEventListener('click', () => { document.getElementById('public-attendee-modal').style.display = 'none'; });
-    document.getElementById('public-attendee-modal-close-btn2')?.addEventListener('click', () => { document.getElementById('public-attendee-modal').style.display = 'none'; });
     
     document.querySelectorAll('.modal').forEach(modal => { 
         modal.addEventListener('click', (e) => { if (e.target === modal) modal.style.display = 'none'; }); 
     });
     
     document.getElementById('register-modal-close-button')?.addEventListener('click', () => document.getElementById('register-modal').style.display = 'none');
-    document.getElementById('register-modal-close-button2')?.addEventListener('click', () => document.getElementById('register-modal').style.display = 'none');
-    
-    document.getElementById('alert-modal-close-button')?.addEventListener('click', () => document.getElementById('alert-modal').style.display = 'none');
     document.getElementById('alert-modal-ok-button')?.addEventListener('click', () => document.getElementById('alert-modal').style.display = 'none');
-    document.getElementById('confirm-modal-close-button')?.addEventListener('click', () => document.getElementById('confirm-modal').style.display = 'none');
     
+    // [เพิ่มใหม่] ปิด Modal สำหรับระบบใหม่
+    document.getElementById('close-approval-modal')?.addEventListener('click', () => { document.getElementById('admin-approval-modal').style.display = 'none'; });
+    document.getElementById('close-command-numbering-modal')?.addEventListener('click', () => { document.getElementById('command-numbering-modal').style.display = 'none'; });
+
     // --- Admin Commands & Memos ---
     document.getElementById('back-to-admin-command')?.addEventListener('click', async () => { await switchPage('command-generation-page'); });
     document.getElementById('admin-generate-command-button')?.addEventListener('click', handleAdminGenerateCommand);
     document.getElementById('command-approval-form')?.addEventListener('submit', handleCommandApproval);
-    document.getElementById('command-approval-modal-close-button')?.addEventListener('click', () => document.getElementById('command-approval-modal').style.display = 'none');
-    document.getElementById('command-approval-cancel-button')?.addEventListener('click', () => document.getElementById('command-approval-modal').style.display = 'none');
     
     document.getElementById('dispatch-form')?.addEventListener('submit', handleDispatchFormSubmit);
-    document.getElementById('dispatch-modal-close-button')?.addEventListener('click', () => document.getElementById('dispatch-modal').style.display = 'none');
-    document.getElementById('dispatch-cancel-button')?.addEventListener('click', () => document.getElementById('dispatch-modal').style.display = 'none');
-    
     document.getElementById('admin-memo-action-form')?.addEventListener('submit', handleAdminMemoActionSubmit);
-    document.getElementById('admin-memo-action-modal-close-button')?.addEventListener('click', () => document.getElementById('admin-memo-action-modal').style.display = 'none');
-    document.getElementById('admin-memo-cancel-button')?.addEventListener('click', () => document.getElementById('admin-memo-action-modal').style.display = 'none');
-    
-    document.getElementById('send-memo-modal-close-button')?.addEventListener('click', () => document.getElementById('send-memo-modal').style.display = 'none');
-    document.getElementById('send-memo-cancel-button')?.addEventListener('click', () => document.getElementById('send-memo-modal').style.display = 'none');
     document.getElementById('send-memo-form')?.addEventListener('submit', handleMemoSubmitFromModal);
-
-    document.getElementById('attachments-form')?.addEventListener('submit', handleAttachmentsSubmit);
-    document.querySelectorAll('.modal').forEach(modal => { 
-    modal.addEventListener('click', (e) => { if (e.target === modal) modal.style.display = 'none'; }); 
-});
+    
     // --- Stats ---
     document.getElementById('refresh-stats')?.addEventListener('click', async () => { 
         if(typeof loadStatsData === 'function') {
-            await loadStatsData(true); // Force Refresh
+            await loadStatsData(true); 
             showAlert('สำเร็จ', 'อัปเดตข้อมูลสถิติเรียบร้อยแล้ว'); 
         }
-    });
-    document.getElementById('export-stats')?.addEventListener('click', () => {
-        if(typeof exportStatsReport === 'function') exportStatsReport();
     });
 
     // --- Navigation ---
@@ -169,41 +178,36 @@ function setupEventListeners() {
     // --- Forms & Inputs ---
     setupVehicleOptions();
     
-    const adminMemoStatus = document.getElementById('admin-memo-status');
-    if (adminMemoStatus) {
-        adminMemoStatus.addEventListener('change', function(e) {
-            const fileUploads = document.getElementById('admin-file-uploads');
-            if (e.target.value === 'เสร็จสิ้น/รับไฟล์ไปใช้งาน') { 
-                fileUploads.classList.remove('hidden'); 
-            } else { 
-                fileUploads.classList.add('hidden'); 
-            }
-        });
-    }
-
+    // 1. ฟอร์มหลักต่างๆ
     const reqForm = document.getElementById('request-form');
     if (reqForm) reqForm.addEventListener('submit', handleRequestFormSubmit);
+
+    document.getElementById('vehicle-request-form')?.addEventListener('submit', handleVehicleFormSubmit);
+    document.getElementById('attachments-form')?.addEventListener('submit', handleAttachmentsSubmit);
     
+    // 2. ล้างลายเซ็น (Signature Pad Controls)
+    document.getElementById('clear-travel-sig')?.addEventListener('click', () => { if (travelSignaturePad) travelSignaturePad.clear(); });
+    document.getElementById('clear-vehicle-sig')?.addEventListener('click', () => { if (vehicleSignaturePad) vehicleSignaturePad.clear(); });
+    document.getElementById('clear-admin-sig')?.addEventListener('click', () => { if (adminSignaturePad) adminSignaturePad.clear(); });
+
+    // 3. แสดง/ซ่อนช่องเซ็นชื่อตามเงื่อนไข (กรณีไม่เบิกเงิน)
+    document.querySelectorAll('input[name="expense_option"]').forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            const sigSection = document.getElementById('travel-sig-section');
+            if (e.target.value === 'no') {
+                sigSection?.classList.remove('hidden');
+            } else {
+                sigSection?.classList.add('hidden');
+            }
+            toggleExpenseOptions(); 
+        });
+    });
+
+    // 4. ส่วนประกอบฟอร์มอื่นๆ
     document.getElementById('form-add-attendee')?.addEventListener('click', () => addAttendeeField());
-    document.getElementById('form-import-excel')?.addEventListener('click', () => document.getElementById('excel-file-input').click());
-    document.getElementById('excel-file-input')?.addEventListener('change', handleExcelImport); 
-    document.getElementById('form-download-template')?.addEventListener('click', downloadAttendeeTemplate); 
-    
-    document.querySelectorAll('input[name="expense_option"]').forEach(radio => radio.addEventListener('change', toggleExpenseOptions));
-    
-    document.querySelectorAll('input[name="modal_memo_type"]').forEach(radio => radio.addEventListener('change', (e) => {
-        const fileContainer = document.getElementById('modal-memo-file-container');
-        const fileInput = document.getElementById('modal-memo-file');
-        const isReimburse = e.target.value === 'reimburse';
-        fileContainer.classList.toggle('hidden', isReimburse);
-        if(fileInput) fileInput.required = !isReimburse;
-    }));
-    
-    document.querySelectorAll('input[name="vehicle_option"]').forEach(checkbox => {checkbox.addEventListener('change', toggleVehicleDetails);});
-    
-    document.getElementById('profile-form')?.addEventListener('submit', handleProfileUpdate);
-    document.getElementById('password-form')?.addEventListener('submit', handlePasswordUpdate);
-    document.getElementById('show-password-toggle')?.addEventListener('change', togglePasswordVisibility);
+    document.querySelectorAll('input[name="vehicle_option"]').forEach(checkbox => {
+        checkbox.addEventListener('change', toggleVehicleDetails);
+    });
     
     document.getElementById('form-department')?.addEventListener('change', (e) => {
         const selectedPosition = e.target.value;
@@ -216,115 +220,59 @@ function setupEventListeners() {
         searchInput.addEventListener('input', (e) => renderRequestsList(allRequestsCache, userMemosCache, e.target.value));
     }
 
-    // --- Admin User Mgmt ---
-    document.getElementById('add-user-button')?.addEventListener('click', openAddUserModal);
-    document.getElementById('download-user-template-button')?.addEventListener('click', downloadUserTemplate);
-    document.getElementById('import-users-button')?.addEventListener('click', () => document.getElementById('user-excel-input').click());
-    document.getElementById('user-excel-input')?.addEventListener('change', handleUserImport);
-    
-    // --- Admin Tabs ---
-    document.getElementById('admin-view-requests-tab')?.addEventListener('click', async (e) => {
-        document.getElementById('admin-view-memos-tab').classList.remove('active');
-        e.target.classList.add('active');
-        document.getElementById('admin-requests-view').classList.remove('hidden');
-        document.getElementById('admin-memos-view').classList.add('hidden');
-        await fetchAllRequestsForCommand();
-    });
-    
-    document.getElementById('admin-view-memos-tab')?.addEventListener('click', async (e) => {
-        document.getElementById('admin-view-requests-tab').classList.remove('active');
-        e.target.classList.add('active');
-        document.getElementById('admin-memos-view').classList.remove('hidden');
-        document.getElementById('admin-requests-view').classList.add('hidden');
-        await fetchAllMemos();
-    });
-
-    // --- [IMPORTANT] ADMIN SYNC BUTTON (HYBRID) ---
+    // --- Admin Sync & Notifications ---
     const adminSyncBtn = document.getElementById('admin-sync-btn');
     if (adminSyncBtn) {
         adminSyncBtn.addEventListener('click', async () => {
-            if (!confirm('⚠️ คำเตือน: การ Sync จะดึงข้อมูลทั้งหมดจาก Google Sheets มาทับใน Firebase\n\nควรทำเมื่อ:\n1. เริ่มระบบครั้งแรก\n2. ข้อมูลไม่ตรงกัน\n\nคุณต้องการดำเนินการต่อหรือไม่?')) return;
-            
+            if (!confirm('⚠️ ยืนยันการ Sync ข้อมูลจาก Google Sheets?')) return;
             toggleLoader('admin-sync-btn', true);
-            
             try {
-                // 1. Sync Requests (คำขอ)
-                if (typeof syncAllDataFromSheetToFirebase === 'function') {
-                    const reqResult = await syncAllDataFromSheetToFirebase();
-                    console.log('Request Sync Result:', reqResult);
-                }
-
-                // 2. Sync Users (ผู้ใช้งาน - เพื่อการ Login ที่เร็วขึ้น)
-                if (typeof syncUsersToFirebase === 'function') {
-                    const userResult = await syncUsersToFirebase();
-                    console.log('User Sync Result:', userResult);
-                }
-
-                showAlert('สำเร็จ', 'อัปเดตฐานข้อมูล (คำขอและผู้ใช้งาน) เรียบร้อยแล้ว');
-                
-                // รีโหลดหน้า Admin เพื่อแสดงข้อมูลล่าสุด
+                if (typeof syncAllDataFromSheetToFirebase === 'function') await syncAllDataFromSheetToFirebase();
+                showAlert('สำเร็จ', 'อัปเดตฐานข้อมูลเรียบร้อยแล้ว');
                 if (typeof fetchAllRequestsForCommand === 'function') await fetchAllRequestsForCommand();
-
-            } catch (error) {
-                showAlert('ผิดพลาด', 'เกิดข้อผิดพลาดในการ Sync: ' + error.message);
-            } finally {
-                toggleLoader('admin-sync-btn', false);
-            }
+            } catch (error) { showAlert('ผิดพลาด', error.message); } 
+            finally { toggleLoader('admin-sync-btn', false); }
         });
     }
 
-    // --- [NEW] NOTIFICATION BELL (กระดิ่งแจ้งเตือน) ---
     const notifBtn = document.getElementById('notification-btn');
     const notifDropdown = document.getElementById('notification-dropdown');
-
     if (notifBtn && notifDropdown) {
-        // กดปุ่มกระดิ่ง -> เปิด/ปิด Dropdown
-        notifBtn.addEventListener('click', (e) => {
-            e.stopPropagation(); // กันไม่ให้ไปโดน event คลิกพื้นหลัง
-            notifDropdown.classList.toggle('hidden');
-        });
-
-        // คลิกที่อื่น -> ปิด Dropdown
+        notifBtn.addEventListener('click', (e) => { e.stopPropagation(); notifDropdown.classList.toggle('hidden'); });
         document.addEventListener('click', (e) => {
-            if (!notifBtn.contains(e.target) && !notifDropdown.contains(e.target)) {
-                notifDropdown.classList.add('hidden');
-            }
+            if (!notifBtn.contains(e.target) && !notifDropdown.contains(e.target)) notifDropdown.classList.add('hidden');
         });
     }
 
-    // --- [NEW] PROMPT SEND MEMO MODAL (แจ้งเตือนส่งงานทันทีหลังสร้าง) ---
-    const promptModal = document.getElementById('prompt-send-memo-modal');
-    const closePrompt = () => { if(promptModal) promptModal.style.display = 'none'; };
+    // --- [IMPORTANT] LINE Messenger API Deep Link Trigger ---
+    // ส่วนนี้จะดักจับลิงก์ที่คลิกมาจาก LINE เพื่อเปิดหน้าต่างจัดการเอกสารอัตโนมัติ
+    const urlParams = new URLSearchParams(window.location.search);
+    const action = urlParams.get('action');
+    const requestId = urlParams.get('id');
 
-    // ปุ่มปิด (X) และปุ่มส่งภายหลัง
-    document.getElementById('prompt-send-memo-close-btn')?.addEventListener('click', closePrompt);
-    document.getElementById('prompt-send-memo-later-btn')?.addEventListener('click', closePrompt);
-
-    // ปุ่ม "ส่งบันทึกข้อความทันที"
-    document.getElementById('prompt-send-memo-now-btn')?.addEventListener('click', () => {
-        // 1. ปิดหน้าต่าง Prompt
-        closePrompt();
+    if (action && requestId) {
+        console.log(`🚀 LINE Link Detected: ${action} for ID: ${requestId}`);
         
-        // 2. ดึง ID ที่ฝากไว้
-        const requestId = document.getElementById('prompt-send-memo-request-id').value;
-        
-        // 3. เปิดหน้าต่างส่งบันทึก (Send Memo Modal)
-        if (requestId) {
-            document.getElementById('memo-modal-request-id').value = requestId;
-            document.getElementById('send-memo-modal').style.display = 'flex';
-        } else {
-            showAlert('ข้อผิดพลาด', 'ไม่พบรหัสคำขอ');
-        }
-    });
-
-    // Error Handling
-    window.addEventListener('error', (event) => {
-        console.error('Global error:', event.error);
-        if (event.error && event.error.message && event.error.message.includes('openEditPageDirect')) return;
-    });
-    window.addEventListener('unhandledrejection', (event) => {
-        console.error('Unhandled promise rejection:', event.reason);
-    });
+        // รอให้สถานะการ Login ของ Firebase พร้อม
+        firebase.auth().onAuthStateChanged(async (user) => {
+            if (user) {
+                // แยกตามประเภท Action ที่ส่งมาจาก LINE
+                if (action === 'admin-verify') {
+                    const step = parseInt(urlParams.get('step') || '1');
+                    await handleAdminVerification(requestId, step);
+                } else if (action === 'numbering') {
+                    await openCommandNumberingModal(requestId);
+                } else if (action === 'director-sign') {
+                    await openDirectorMultiSignModal(requestId);
+                } else if (action === 'vice-sign') {
+                    const role = urlParams.get('role');
+                    await prepareApprovalModal(requestId, null, role);
+                }
+            } else {
+                showAlert('กรุณาล็อกอิน', 'กรุณาเข้าสู่ระบบเพื่อดำเนินการจัดการเอกสารผ่านลิงก์ LINE');
+            }
+        });
+    }
 }
 
 function handleExcelImport(e) {

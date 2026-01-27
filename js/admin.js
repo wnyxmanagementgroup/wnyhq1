@@ -734,6 +734,7 @@ function renderUsersList(users) {
     </div>`;
 }
 
+// [แก้ไข] แสดงรายการคำขอฝั่ง Admin พร้อมระบุสถานะการเบิกเงิน
 function renderAdminRequestsList(requests) {
     const container = document.getElementById('admin-requests-list');
     
@@ -751,31 +752,39 @@ function renderAdminRequestsList(requests) {
         const totalPeople = attendeeCount + 1;
         let peopleCategory = totalPeople === 1 ? "คำสั่งเดี่ยว" : (totalPeople <= 5 ? "คำสั่งกลุ่มเล็ก" : "คำสั่งกลุ่มใหญ่");
         
+        // --- ส่วนที่เพิ่ม: ตัวแปรสถานะการเบิกเงิน ---
+        const isReimburse = request.expenseOption !== 'no';
+        const expenseBadge = isReimburse 
+            ? `<span class="bg-orange-100 text-orange-800 text-xs font-bold px-2.5 py-1 rounded-full border border-orange-200">🟠 เบิกค่าใช้จ่าย</span>`
+            : `<span class="bg-blue-100 text-blue-800 text-xs font-bold px-2.5 py-1 rounded-full border border-blue-200">🔵 ไม่เบิกค่าใช้จ่าย</span>`;
+
         const safeId = escapeHtml(request.id);
         const safeName = escapeHtml(request.requesterName);
         const safePurpose = escapeHtml(request.purpose);
         const safeLocation = escapeHtml(request.location);
         const safeDate = `${formatDisplayDate(request.startDate)} - ${formatDisplayDate(request.endDate)}`;
 
-        let commandActionButtons = '';
-        if (request.commandPdfUrl) {
-            commandActionButtons = `
-                <div class="flex flex-wrap gap-2 justify-end">
-                    <a href="${request.commandPdfUrl}" target="_blank" class="btn bg-blue-600 hover:bg-blue-700 text-white btn-sm flex items-center gap-1 shadow-sm px-3">
-                        📄 ดูคำสั่ง
-                    </a>
-                    <button onclick="openAdminGenerateCommand('${safeId}')" class="btn bg-yellow-500 hover:bg-yellow-600 text-white btn-sm flex items-center gap-1 shadow-sm px-3">
-                        ✏️ แก้ไข/ออกใหม่
-                    </button>
-                </div>
-            `;
-        } else {
-            commandActionButtons = `
-                <button onclick="openAdminGenerateCommand('${safeId}')" class="btn bg-green-500 hover:bg-green-600 text-white btn-sm shadow-sm w-full md:w-auto">
-                    ✅ ออกคำสั่ง (${peopleCategory})
+        // แก้ไขใน admin.js ภายในฟังก์ชัน renderAdminRequestsList
+let commandActionButtons = '';
+if (request.commandPdfUrl) {
+    commandActionButtons = `
+        <div class="flex flex-col gap-2 w-full">
+            <div class="flex flex-wrap gap-2 justify-end">
+                <a href="${request.commandPdfUrl}" target="_blank" class="btn bg-blue-600 hover:bg-blue-700 text-white btn-sm flex items-center gap-1 shadow-sm px-3">
+                    📄 ดูคำสั่ง
+                </a>
+                <button onclick="openAdminGenerateCommand('${safeId}')" class="btn bg-yellow-500 hover:bg-yellow-600 text-white btn-sm flex items-center gap-1 shadow-sm px-3">
+                    ✏️ แก้ไข/ออกใหม่
                 </button>
-            `;
-        }
+            </div>
+            <button onclick="prepareApprovalModal('${safeId}', '${request.pdfUrl}')" class="btn bg-purple-600 hover:bg-purple-700 text-white btn-sm w-full shadow-md flex items-center justify-center gap-2 mt-2">
+                ✍️ ลงนามอนุมัติ (สำหรับผู้บริหาร)
+            </button>
+        </div>
+    `;
+} else {
+    // ... ปุ่มออกคำสั่งเดิม ...
+}
 
         return `
         <div class="border rounded-xl p-5 bg-white shadow-sm hover:shadow-md transition duration-200 mb-4 border-l-4 ${request.commandPdfUrl ? 'border-l-green-500' : 'border-l-yellow-400'}">
@@ -784,7 +793,7 @@ function renderAdminRequestsList(requests) {
                 <div class="flex-1 min-w-[250px]">
                     <div class="flex items-center gap-2 mb-1">
                         <h4 class="font-bold text-indigo-700 text-lg">${safeId}</h4>
-                        <span class="text-xs px-2 py-0.5 rounded-full ${request.commandPdfUrl ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}">
+                        ${expenseBadge} <span class="text-xs px-2 py-0.5 rounded-full ${request.commandPdfUrl ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}">
                             ${request.commandPdfUrl ? 'ออกคำสั่งแล้ว' : 'รอออกคำสั่ง'}
                         </span>
                     </div>
@@ -830,10 +839,6 @@ function renderAdminRequestsList(requests) {
                             📦 ดูหนังสือส่ง
                         </a>`
                     }
-                    
-                    <button onclick="openCommandApproval('${safeId}')" class="text-xs text-gray-300 hover:text-gray-500 mt-2 underline" title="อนุมัติโดยไม่สร้างไฟล์">
-                        อนุมัติด่วน (Bypass)
-                    </button>
                 </div>
             </div>
         </div>`;
@@ -1235,4 +1240,143 @@ function blobToBase64(blob) {
     reader.onerror = reject;
     reader.readAsDataURL(blob);
   });
+}
+// --- [เพิ่มใหม่] ฟังก์ชันระบบลงนามอนุมัติสำหรับผู้บริหาร ---
+
+let adminSignaturePad; // ตัวแปรเก็บสถานะ Signature Pad
+
+// 1. ฟังก์ชันเตรียม Modal และเปิดใช้งานกระดานเซ็นชื่อ
+async function prepareApprovalModal(requestId, pdfUrl) {
+    const user = getCurrentUser();
+    if (!user || (user.role !== 'admin' && !user.position.includes('รองผู้อำนวยการ') && !user.position.includes('ผู้อำนวยการ'))) {
+        return showAlert('ปฏิเสธการเข้าถึง', 'ฟังก์ชันนี้เฉพาะผู้บริหารเท่านั้น');
+    }
+
+    // แสดง Modal
+    const modal = document.getElementById('admin-approval-modal');
+    modal.style.display = 'flex';
+    
+    // แสดงตำแหน่งใน Modal
+    document.getElementById('admin-role-display').innerText = user.position;
+    
+    // ตั้งค่าปุ่มบันทึก
+    const approveBtn = document.getElementById('btn-approve-request');
+    approveBtn.onclick = () => handleAdminApprovalSignature(requestId, pdfUrl, user.position);
+
+    // เริ่มต้น Signature Pad (ถ้ายังไม่มี)
+    const canvas = document.getElementById('signature-pad-admin');
+    if (!adminSignaturePad) {
+        adminSignaturePad = new SignaturePad(canvas, {
+            backgroundColor: 'rgba(255, 255, 255, 0)',
+            penColor: 'rgb(0, 0, 128)' // สีน้ำเงินเข้ม
+        });
+        
+        // ฟังก์ชันล้างหน้าจอ
+        document.getElementById('clear-admin-sig').onclick = () => adminSignaturePad.clear();
+        document.getElementById('close-approval-modal').onclick = () => modal.style.display = 'none';
+    } else {
+        adminSignaturePad.clear();
+    }
+
+    // ปรับขนาด Canvas ให้พอดีกับหน้าจอ
+    const ratio = Math.max(window.devicePixelRatio || 1, 1);
+    canvas.width = canvas.offsetWidth * ratio;
+    canvas.height = canvas.offsetHeight * ratio;
+    canvas.getContext("2d").scale(ratio, ratio);
+}
+
+// 2. ฟังก์ชันส่งลายเซ็นไปประมวลผลบน Cloud Run
+async function handleAdminApprovalSignature(requestId, pdfUrl, roleName) {
+    if (adminSignaturePad.isEmpty()) {
+        return showAlert('แจ้งเตือน', 'กรุณาลงลายมือชื่อก่อนกดยืนยัน');
+    }
+
+    if (!pdfUrl) return showAlert('ผิดพลาด', 'ไม่พบไฟล์ PDF ต้นฉบับ');
+
+    toggleLoader('btn-approve-request', true);
+
+    try {
+        const signatureBase64 = adminSignaturePad.toDataURL('image/png');
+        
+        // ส่งไปที่ Cloud Run Endpoint ใหม่ที่สร้างไว้ (/pdf/sign)
+        const response = await fetch(`${PDF_ENGINE_CONFIG.BASE_URL}pdf/sign`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                pdfUrl: pdfUrl,
+                signatureBase64: signatureBase64,
+                role: roleName, // ส่งชื่อตำแหน่งไปเพื่อเลือกพิกัด X, Y
+                requestId: requestId
+            })
+        });
+
+        if (!response.ok) throw new Error('การประทับลายเซ็นล้มเหลว');
+
+        const signedBlob = await response.blob();
+        
+        // อัปโหลดไฟล์ที่เซ็นแล้วกลับเข้า Google Drive
+        const base64Data = await blobToBase64(signedBlob);
+        const uploadResult = await apiCall('POST', 'uploadGeneratedFile', {
+            data: base64Data,
+            filename: `อนุมัติแล้ว_${requestId.replace(/\//g,'-')}.pdf`,
+            mimeType: 'application/pdf',
+            username: 'ADMIN_SIGNED'
+        });
+
+        if (uploadResult.status === 'success') {
+            // อัปเดตสถานะและลิงก์ไฟล์ใหม่ใน Firestore
+            const safeId = requestId.replace(/[\/\\:\.]/g, '-');
+            await db.collection('requests').doc(safeId).set({
+                pdfUrl: uploadResult.url,
+                status: 'อนุมัติแล้ว',
+                lastSignedBy: roleName
+            }, { merge: true });
+
+            showAlert('สำเร็จ', 'ลงนามอนุมัติและอัปเดตเอกสารเรียบร้อยแล้ว');
+            document.getElementById('admin-approval-modal').style.display = 'none';
+            await fetchAllRequestsForCommand(); // โหลดรายการใหม่
+        }
+    } catch (error) {
+        console.error(error);
+        showAlert('ผิดพลาด', 'เกิดข้อผิดพลาด: ' + error.message);
+    } finally {
+        toggleLoader('btn-approve-request', false);
+    }
+}
+// 1. แอดมินตรวจสอบและส่งต่องาน (Gatekeeper)
+async function handleAdminVerification(requestId, step) {
+    const safeId = requestId.replace(/\//g, '-');
+    let nextStatus = '', nextLineGroup = '';
+
+    if (step === 1) { nextStatus = 'รอรองฯ บุคคลลงนาม'; nextLineGroup = 'VICE_PERSONNEL'; }
+    else if (step === 2) { nextStatus = 'รอรองฯ วิชาการลงนาม'; nextLineGroup = 'VICE_ACADEMIC'; }
+    else if (step === 3) { nextStatus = 'รอสารบรรณลงเลข'; nextLineGroup = 'SARABAN'; }
+
+    await db.collection('requests').doc(safeId).update({ status: nextStatus });
+    const link = `${window.location.origin}?action=verify&id=${requestId}&step=${step}`;
+    await sendLineNotification(link, `ตรวจสอบขั้นตอนที่ ${step}`, nextLineGroup);
+    showAlert('สำเร็จ', 'ส่งเรื่องต่อเรียบร้อย');
+}
+
+// 2. สารบรรณลงเลขคำสั่ง
+async function handleCommandNumbering(requestId) {
+    const cmdNum = document.getElementById('nb-command-number').value;
+    const cmdDate = document.getElementById('nb-command-date').value;
+    
+    const response = await fetch(`${PDF_ENGINE_CONFIG.BASE_URL}pdf/stamp-number`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ commandNumber: cmdNum, commandDate: cmdDate, pdfUrl: currentPdfUrl })
+    });
+    
+    const stampedBlob = await response.blob();
+    const upload = await apiCall('POST', 'uploadGeneratedFile', { data: await blobToBase64(stampedBlob) });
+    
+    await db.collection('requests').doc(requestId.replace(/\//g,'-')).update({
+        commandPdfUrl: upload.url,
+        status: 'รอผู้อำนวยการลงนาม'
+    });
+    // ส่งต่อให้ ผอ.
+    const directorLink = `${window.location.origin}?action=director-sign&id=${requestId}`;
+    await sendLineNotification(directorLink, "โปรดลงนามคำสั่ง", "DIRECTOR");
 }

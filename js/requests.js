@@ -912,14 +912,12 @@ function toggleVehicleDetails() {
     if (publicDetails) publicDetails.classList.toggle('hidden', !publicCheckbox?.checked);
 }
 
-// ✅ [HYBRID V2] สร้างบันทึกข้อความ + PDF Cloud Run + Storage
-// แก้ไขใน requests.js - ฟังก์ชันส่งฟอร์มพร้อมตัวตรวจจับเงื่อนไขการเบิกเงิน
+// 1. ฟังก์ชันส่งคำขอไปราชการ (Travel Request)
 async function handleRequestFormSubmit(e) {
     e.preventDefault();
     const user = getCurrentUser();
-    if (!user) { showAlert('ผิดพลาด', 'กรุณาเข้าสู่ระบบก่อน'); return; }
+    if (!user) return;
 
-    // 1. เตรียมข้อมูลจากฟอร์ม
     const formData = {
         username: user.username,
         docDate: document.getElementById('form-doc-date').value,
@@ -931,83 +929,102 @@ async function handleRequestFormSubmit(e) {
         endDate: document.getElementById('form-end-date').value,
         attendees: Array.from(document.querySelectorAll('#form-attendees-list > div')).map(div => {
             const select = div.querySelector('.attendee-position-select');
-            let position = select.value;
-            if (position === 'other') { position = div.querySelector('.attendee-position-other').value; }
-            return { name: div.querySelector('.attendee-name').value, position: position };
-        }).filter(att => att.name && att.position),
+            return { name: div.querySelector('.attendee-name').value, position: select.value };
+        }).filter(att => att.name),
         expenseOption: document.querySelector('input[name="expense_option"]:checked').value,
-        expenseItems: [],
-        totalExpense: document.getElementById('form-total-expense').value || 0,
         vehicleOption: document.querySelector('input[name="vehicle_option"]:checked').value,
         licensePlate: document.getElementById('form-license-plate').value,
         department: document.getElementById('form-department').value,
-        headName: document.getElementById('form-head-name').value,
-        isEdit: false 
+        headName: document.getElementById('form-head-name').value
     };
-
-    if (formData.expenseOption === 'partial') {
-        document.querySelectorAll('input[name="expense_item"]:checked').forEach(chk => {
-            const item = { name: chk.dataset.itemName };
-            if (item.name === 'ค่าใช้จ่ายอื่นๆ') { item.detail = document.getElementById('expense_other_text')?.value || ''; }
-            formData.expenseItems.push(item);
-        });
-    }
 
     toggleLoader('submit-request-button', true);
     
     try {
-        // 2. จอง ID ในระบบ
+        // ตรวจสอบเงื่อนไขรถส่วนตัว
+        if (formData.vehicleOption === 'private') {
+            const vhQuery = await db.collection('vehicle_requests')
+                .where('licensePlate', '==', formData.licensePlate)
+                .where('startDate', '==', formData.startDate)
+                .where('username', '==', formData.username).get();
+
+            if (vhQuery.empty || formData.expenseOption !== 'no') {
+                showAlert('ย้ายไปหน้าบันทึกรถ', 'ระบบไม่พบใบขอใช้รถหรือเป็นการเบิกจ่าย โปรดกรอกข้อมูลรถก่อน');
+                sessionStorage.setItem('pendingTravelRequest', JSON.stringify(formData));
+                switchPage('vehicle-page');
+                return;
+            }
+        }
+
         let result = await apiCall('POST', 'createRequest', formData);
-
         if (result.status === 'success') {
-            const newRequestId = result.data.id;
-            
-            // 3. สร้าง PDF หลักผ่าน Cloud Run
-            const pdfData = { ...formData, doctype: 'memo', id: newRequestId };
-            const { pdfBlob } = await generateOfficialPDF(pdfData);
-
-            // ตรวจจับเงื่อนไข: ถ้ามีการเบิกค่าใช้จ่าย (expenseOption ไม่ใช่ 'no')
+            const { pdfBlob } = await generateOfficialPDF({...formData, doctype: 'memo', id: result.data.id});
             if (formData.expenseOption !== 'no') {
-                // --- กรณีเบิกเงิน: จบกระบวนการทันที ---
-                const pdfBase64 = await blobToBase64(pdfBlob);
-                const uploadResult = await apiCall('POST', 'uploadGeneratedFile', {
-                    data: pdfBase64,
-                    filename: `บันทึกข้อความ_${newRequestId.replace(/\//g,'-')}.pdf`,
-                    mimeType: 'application/pdf',
-                    username: user.username
+                const upload = await apiCall('POST', 'uploadGeneratedFile', {
+                    data: await blobToBase64(pdfBlob), filename: `บันทึก_${result.data.id.replace(/\//g,'-')}.pdf`, username: user.username
                 });
-
-                if (uploadResult.status === 'success') {
-                    // อัปเดตสถานะใน Firestore
-                    const safeId = newRequestId.replace(/[\/\\:\.]/g, '-');
-                    await db.collection('requests').doc(safeId).set({
-                        pdfUrl: uploadResult.url,
-                        status: 'รอการตรวจสอบ'
-                    }, { merge: true });
-
-                    showAlert('สำเร็จ', 'สร้างบันทึกข้อความแบบเบิกค่าใช้จ่ายเรียบร้อยแล้ว');
-                    window.open(uploadResult.url, '_blank');
-                    
-                    clearRequestsCache();
-                    await fetchUserRequests();
-                    switchPage('dashboard-page');
-                }
+                await db.collection('requests').doc(result.data.id.replace(/\//g,'-')).set({ pdfUrl: upload.url, status: 'รอแอดมินตรวจสอบ (1)' }, { merge: true });
+                window.open(upload.url, '_blank');
+                switchPage('dashboard-page');
             } else {
-                // --- กรณีไม่เบิกเงิน: เข้าสู่กระบวนการแนบไฟล์เพิ่มเติม ---
                 window.currentMainPDF = pdfBlob;
                 window.currentFormData = formData;
-                openAttachmentModal(newRequestId, formData);
+                openAttachmentModal(result.data.id, formData);
             }
-
-        } else { 
-            showAlert('ผิดพลาด', result.message); 
         }
-    } catch (error) { 
-        console.error(error);
-        showAlert('แจ้งเตือน', 'เกิดข้อผิดพลาด: ' + error.message); 
-    } finally { 
-        toggleLoader('submit-request-button', false); 
+    } catch (error) { showAlert('ผิดพลาด', error.message); } finally { toggleLoader('submit-request-button', false); }
+}
+
+// 2. ฟังก์ชันบันทึกใบขอใช้รถส่วนตัว (Vehicle Request)
+async function handleVehicleFormSubmit(e) {
+    e.preventDefault();
+    const user = getCurrentUser();
+    const formData = {
+        username: user.username,
+        requesterName: document.getElementById('vh-name').value,
+        licensePlate: document.getElementById('vh-license').value,
+        startDate: document.getElementById('vh-start').value,
+        endDate: document.getElementById('vh-end').value,
+        doctype: 'vehicle_memo'
+    };
+
+    toggleLoader('vh-submit-btn', true);
+    try {
+        const { pdfBlob } = await generateOfficialPDF(formData);
+        const upload = await apiCall('POST', 'uploadGeneratedFile', {
+            data: await blobToBase64(pdfBlob), filename: `รถส่วนตัว_${formData.licensePlate}.pdf`, username: user.username
+        });
+        await db.collection('vehicle_requests').add({...formData, pdfUrl: upload.url});
+        window.open(upload.url, '_blank');
+        
+        const pending = sessionStorage.getItem('pendingTravelRequest');
+        if (pending && confirm('กลับไปทำเรื่องไปราชการต่อหรือไม่?')) {
+            sessionStorage.removeItem('pendingTravelRequest');
+            switchPage('form-page');
+        } else {
+            switchPage('dashboard-page');
+        }
+    } catch (e) { showAlert('ผิดพลาด', e.message); } finally { toggleLoader('vh-submit-btn', false); }
+}
+
+// 3. ฟังก์ชันแนบไฟล์อัตโนมัติ
+async function openAttachmentModal(requestId, formData) {
+    document.getElementById('attach-request-id').value = requestId;
+    const isVice = formData.requesterPosition.includes("รองผู้อำนวยการ");
+    const isAlone = formData.attendees.length === 0;
+    
+    // ค้นหาไฟล์รถอัตโนมัติ
+    const vhSnap = await db.collection('vehicle_requests')
+        .where('licensePlate', '==', formData.licensePlate)
+        .where('startDate', '==', formData.startDate)
+        .where('username', '==', formData.username).get();
+
+    if (!vhSnap.empty) {
+        document.getElementById('auto-car-pdf-url').value = vhSnap.docs[0].data().pdfUrl;
+        document.getElementById('auto-found-car-msg').classList.remove('hidden');
+        document.getElementById('manual-car-upload').classList.add('hidden');
     }
+    document.getElementById('upload-attachments-modal').style.display = 'flex';
 }
 
 function tryAutoFillRequester(retry = 0) {
@@ -1388,104 +1405,143 @@ async function saveEditRequest() {
         }
     }
 }
-// ฟังก์ชันสำหรับวิเคราะห์เงื่อนไขและเปิด Modal แนบไฟล์
-// ฟังก์ชันสำหรับวิเคราะห์เงื่อนไขและเปิด Modal แนบไฟล์ (เฉพาะกรณีไม่เบิกเงิน)
-// ฟังก์ชันสำหรับวิเคราะห์เงื่อนไขและเปิด Modal แนบไฟล์ (ปรับปรุงเงื่อนไขรองผู้อำนวยการ)
-function openAttachmentModal(requestId, formData) {
+/// [แก้ไข] ฟังก์ชันวิเคราะห์เงื่อนไขและค้นหาบันทึกรถส่วนตัวอัตโนมัติ
+async function openAttachmentModal(requestId, formData) {
     document.getElementById('attach-request-id').value = requestId;
     
     // 1. ตรวจสอบเงื่อนไขวัน จันทร์-ศุกร์
     const start = new Date(formData.startDate);
     const end = new Date(formData.endDate);
     let hasWeekday = false;
-    
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
         const day = d.getDay();
-        if (day >= 1 && day <= 5) { 
-            hasWeekday = true; 
-            break; 
-        }
+        if (day >= 1 && day <= 5) { hasWeekday = true; break; }
     }
 
-    // 2. ตรวจสอบว่าเป็น "รองผู้อำนวยการ" และ "เดินทางคนเดียว" หรือไม่
     const isViceDirector = formData.requesterPosition.includes("รองผู้อำนวยการ");
     const isAlone = (!formData.attendees || formData.attendees.length === 0);
-    
-    // เงื่อนไขการแสดงฟิลด์ "บันทึกขอแลกคาบสอน":
-    // ต้องเป็นวัน จ-ศ และ (ต้องไม่ใช่รองผู้อำนวยการที่ไปคนเดียว)
     const showExchangeField = hasWeekday && !(isViceDirector && isAlone);
 
-    // จัดการการแสดงผลฟิลด์ขอแลกคาบ
     const exchangeField = document.getElementById('field-exchange-class');
     const exchangeInput = document.getElementById('file-exchange');
-    
     if (showExchangeField) {
         exchangeField.classList.remove('hidden');
         exchangeInput.required = true;
     } else {
         exchangeField.classList.add('hidden');
         exchangeInput.required = false;
-        exchangeInput.value = ""; // ล้างค่าไฟล์ที่อาจค้างอยู่
+        exchangeInput.value = "";
     }
 
-    // 3. จัดการฟิลด์รถส่วนตัว (เงื่อนไขเดิม)
+    // 2. [ส่วนที่เพิ่มใหม่] จัดการฟิลด์รถส่วนตัวและการค้นหาอัตโนมัติ
     const carField = document.getElementById('field-private-car');
     const carInput = document.getElementById('file-car');
+    const manualUploadDiv = document.getElementById('manual-car-upload');
+    const autoCarMsg = document.getElementById('auto-found-car-msg');
+    const autoCarUrlInput = document.getElementById('auto-car-pdf-url');
+
     if (formData.vehicleOption === 'private') {
         carField.classList.remove('hidden');
+        
+        // ล้างค่าสถานะเดิม
+        autoCarUrlInput.value = "";
+        autoCarMsg.classList.add('hidden');
+        manualUploadDiv.classList.remove('hidden');
         carInput.required = true;
+
+        try {
+            // ค้นหาใน Firestore (Collection: vehicle_requests) 
+            // โดยอิงจาก ทะเบียนรถ + วันที่เริ่ม + วันที่สิ้นสุด + ชื่อผู้ใช้
+            const querySnapshot = await db.collection('vehicle_requests')
+                .where('licensePlate', '==', formData.licensePlate)
+                .where('startDate', '==', formData.startDate)
+                .where('endDate', '==', formData.endDate)
+                .where('username', '==', formData.username)
+                .limit(1)
+                .get();
+
+            if (!querySnapshot.empty) {
+                // กรณีพบไฟล์ที่ตรงกัน
+                const vehicleDoc = querySnapshot.docs[0].data();
+                autoCarUrlInput.value = vehicleDoc.pdfUrl; // เก็บ URL ไฟล์ไว้
+                
+                autoCarMsg.classList.remove('hidden');    // แสดงข้อความสำเร็จ
+                manualUploadDiv.classList.add('hidden');  // ซ่อนปุ่มเลือกไฟล์
+                carInput.required = false;                // ไม่ต้องบังคับเลือกไฟล์เอง
+                console.log("🔍 Auto-Found Vehicle PDF:", vehicleDoc.pdfUrl);
+            }
+        } catch (error) {
+            console.error("Error searching vehicle database:", error);
+            // กรณี Error ให้แสดงช่องอัปโหลดปกติ
+            manualUploadDiv.classList.remove('hidden');
+        }
     } else {
         carField.classList.add('hidden');
-        carInput.required = false;
-        carInput.value = "";
     }
 
-    // แสดง Modal ขั้นตอนที่ 2
     document.getElementById('upload-attachments-modal').style.display = 'flex';
 }
 
 // ฟังก์ชันสำหรับรวบรวมไฟล์และส่งไป Merge ที่ Cloud Run
+// [แก้ไข] ฟังก์ชันรวบรวมไฟล์ส่งไป Merge (รองรับการดึงไฟล์อัตโนมัติจาก URL)
 async function handleAttachmentsSubmit(e) {
     e.preventDefault();
     const requestId = document.getElementById('attach-request-id').value;
     const user = getCurrentUser();
+    const btnText = document.getElementById('merge-button-text');
     
     toggleLoader('merge-files-button', true);
+    if(btnText) btnText.innerText = "กำลังเตรียมไฟล์และรวบรวมข้อมูล...";
 
     try {
         const formData = new FormData();
-        // 1. ใส่ไฟล์หลักที่สร้างมา
+        // 1. ใส่ไฟล์หลัก (บันทึกข้อความ)
         formData.append('files', window.currentMainPDF, '01_บันทึกข้อความขอไปราชการ.pdf');
 
-        // 2. ใส่ไฟล์ประกอบตามลำดับ
-        const addFile = (id, label) => {
+        // 2. ฟังก์ชันช่วยเพิ่มไฟล์จาก Input
+        const addManualFile = (id, label) => {
             const input = document.getElementById(id);
             if (input && input.files[0]) {
                 formData.append('files', input.files[0], label + "_" + input.files[0].name);
             }
         };
 
-        addFile('file-exchange', '02_บันทึกขอแลกคาบ');
-        addFile('file-original', '03_หนังสือต้นเรื่อง');
-        addFile('file-car', '04_บันทึกขอใช้รถส่วนตัว');
+        addManualFile('file-exchange', '02_บันทึกขอแลกคาบ');
+        addManualFile('file-original', '03_หนังสือต้นเรื่อง');
+
+        // 3. [ส่วนที่เพิ่มใหม่] จัดการไฟล์รถส่วนตัว (Auto URL vs Manual File)
+        const autoCarUrl = document.getElementById('auto-car-pdf-url').value;
+        if (autoCarUrl && autoCarUrl !== "") {
+            // กรณีพบไฟล์อัตโนมัติ: ดึงไฟล์จาก URL มาเป็น Blob
+            if(btnText) btnText.innerText = "กำลังดึงข้อมูลบันทึกรถส่วนตัวจากระบบ...";
+            const response = await fetch(autoCarUrl);
+            if (!response.ok) throw new Error("ไม่สามารถดาวน์โหลดไฟล์รถส่วนตัวจากระบบได้");
+            const carBlob = await response.blob();
+            formData.append('files', carBlob, '04_บันทึกขอใช้รถส่วนตัว_AUTO.pdf');
+        } else {
+            // กรณีต้องอัปโหลดเอง
+            addManualFile('file-car', '04_บันทึกขอใช้รถส่วนตัว');
+        }
         
+        // อื่นๆ
         const others = document.getElementById('file-others').files;
         for (let i = 0; i < others.length; i++) {
             formData.append('files', others[i], `05_อื่นๆ_${i}_${others[i].name}`);
         }
 
-        // 3. เรียก Cloud Run เพื่อ Merge PDF
+        if(btnText) btnText.innerText = "กำลังประมวลผลรวมไฟล์ (Merge PDF)...";
+
+        // 4. ส่งไป Cloud Run เพื่อ Merge
         const cloudRunBaseUrl = PDF_ENGINE_CONFIG.BASE_URL;
-        const response = await fetch(`${cloudRunBaseUrl}/pdf/merge`, {
+        const responseMerge = await fetch(`${cloudRunBaseUrl}/pdf/merge`, {
             method: "POST",
             body: formData
         });
 
-        if (!response.ok) throw new Error("Cloud Run Merge Error");
+        if (!responseMerge.ok) throw new Error("Cloud Run Merge Service Error");
+        const mergedBlob = await responseMerge.blob();
         
-        const mergedBlob = await response.blob();
-        
-        // 4. อัปโหลดไฟล์ที่รวมแล้วลง Drive
+        // 5. อัปโหลดผลลัพธ์ลง Drive
         const base64 = await blobToBase64(mergedBlob);
         const uploadResult = await apiCall('POST', 'uploadGeneratedFile', {
             data: base64,
@@ -1496,8 +1552,6 @@ async function handleAttachmentsSubmit(e) {
 
         if (uploadResult.status === 'success') {
             const finalUrl = uploadResult.url;
-            
-            // อัปเดต Firestore
             const safeId = requestId.replace(/[\/\\:\.]/g, '-');
             await db.collection('requests').doc(safeId).set({
                 pdfUrl: finalUrl,
@@ -1515,8 +1569,181 @@ async function handleAttachmentsSubmit(e) {
 
     } catch (error) {
         console.error(error);
-        showAlert('ผิดพลาด', 'เกิดข้อผิดพลาดในการรวมไฟล์: ' + error.message);
+        showAlert('ผิดพลาด', 'เกิดข้อผิดพลาด: ' + error.message);
     } finally {
         toggleLoader('merge-files-button', false);
+        if(btnText) btnText.innerText = "ประมวลผลรวมไฟล์และส่งคำขอ";
     }
+}
+// [ใหม่] ฟังก์ชันจัดการการส่งฟอร์มขอใช้รถส่วนตัว (Vehicle Memo)
+// [แก้ไขทั้งฟังก์ชัน] ฟังก์ชันบันทึกใบขอใช้รถส่วนตัวพร้อมระบบ Redirect กลับ
+async function handleVehicleFormSubmit(e) {
+    e.preventDefault();
+    const user = getCurrentUser();
+    if (!user) return;
+
+    const formData = {
+        username: user.username,
+        requesterName: document.getElementById('vh-name').value.trim(),
+        requesterPosition: document.getElementById('vh-position').value.trim(),
+        vehicleType: document.getElementById('vh-type').value,
+        licensePlate: document.getElementById('vh-license').value.trim(),
+        reason: document.getElementById('vh-reason').value.trim(),
+        destination: document.getElementById('vh-destination').value.trim(),
+        location: document.getElementById('vh-location').value.trim(),
+        startDate: document.getElementById('vh-start').value,
+        endDate: document.getElementById('vh-end').value,
+        distance: document.getElementById('vh-distance').value,
+        docDate: new Date().toISOString().split('T')[0],
+        doctype: 'vehicle_memo' 
+    };
+
+    toggleLoader('vh-submit-btn', true);
+
+    try {
+        // 1. สร้างเอกสาร PDF ขอใช้รถ
+        const { pdfBlob } = await generateOfficialPDF(formData);
+        const pdfBase64 = await blobToBase64(pdfBlob);
+        
+        // 2. อัปโหลดและบันทึกลงฐานข้อมูล
+        const uploadResult = await apiCall('POST', 'uploadGeneratedFile', {
+            data: pdfBase64,
+            filename: `บันทึกขอใช้รถ_${formData.licensePlate}_${formData.startDate}.pdf`,
+            mimeType: 'application/pdf',
+            username: user.username
+        });
+
+        if (uploadResult.status === 'success') {
+            const docId = `${user.username}-${formData.licensePlate}-${formData.startDate}`.replace(/[\s\/]/g, '-');
+            await db.collection('vehicle_requests').doc(docId).set({
+                ...formData,
+                pdfUrl: uploadResult.url,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            });
+
+            showAlert('สำเร็จ', 'บันทึกข้อมูลรถเรียบร้อยแล้ว ท่านสามารถปริ้นเอกสารนี้ได้ทันที');
+            window.open(uploadResult.url, '_blank'); // เปิดให้ปริ้นทันที
+
+            // 3. ตรวจสอบว่ามี "คำขอไปราชการ" ค้างอยู่หรือไม่
+            const pendingRequest = sessionStorage.getItem('pendingTravelRequest');
+            if (pendingRequest) {
+                if (await showConfirm('ดำเนินการต่อ', 'ระบบพบว่าท่านมีคำขอไปราชการที่ค้างอยู่ ต้องการกลับไปดำเนินการต่อหรือไม่?')) {
+                    sessionStorage.removeItem('pendingTravelRequest');
+                    switchPage('form-page');
+                    return;
+                }
+            }
+            switchPage('dashboard-page');
+        }
+    } catch (error) { 
+        showAlert('ผิดพลาด', error.message); 
+    } finally { 
+        toggleLoader('vh-submit-btn', false); 
+    }
+}
+
+// [แก้ไขทั้งฟังก์ชัน] openAttachmentModal เพื่อรองรับ Auto-Match
+async function openAttachmentModal(requestId, formData) {
+    document.getElementById('attach-request-id').value = requestId;
+    
+    const start = new Date(formData.startDate);
+    const end = new Date(formData.endDate);
+    let hasWeekday = false;
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        if (d.getDay() >= 1 && d.getDay() <= 5) { hasWeekday = true; break; }
+    }
+
+    const isViceDirector = formData.requesterPosition.includes("รองผู้อำนวยการ");
+    const isAlone = (!formData.attendees || formData.attendees.length === 0);
+    const showExchangeField = hasWeekday && !(isViceDirector && isAlone);
+
+    const exchangeField = document.getElementById('field-exchange-class');
+    const exchangeInput = document.getElementById('file-exchange');
+    if (showExchangeField) {
+        exchangeField.classList.remove('hidden');
+        exchangeInput.required = true;
+    } else {
+        exchangeField.classList.add('hidden');
+        exchangeInput.required = false;
+        exchangeInput.value = "";
+    }
+
+    const carField = document.getElementById('field-private-car');
+    const carInput = document.getElementById('file-car');
+    const autoCarMsg = document.getElementById('auto-found-car-msg');
+    const autoCarUrlInput = document.getElementById('auto-car-pdf-url');
+
+    if (formData.vehicleOption === 'private') {
+        carField.classList.remove('hidden');
+        autoCarUrlInput.value = ""; autoCarMsg.classList.add('hidden'); carInput.classList.remove('hidden'); carInput.required = true;
+
+        try {
+            // ค้นหาใน Firestore อัตโนมัติ
+            const snap = await db.collection('vehicle_requests')
+                .where('licensePlate', '==', formData.licensePlate)
+                .where('startDate', '==', formData.startDate)
+                .where('endDate', '==', formData.endDate)
+                .where('username', '==', formData.username).get();
+
+            if (!snap.empty) {
+                const data = snap.docs[0].data();
+                autoCarUrlInput.value = data.pdfUrl;
+                autoCarMsg.classList.remove('hidden'); // แสดงข้อความ "พบข้อมูลแล้ว"
+                carInput.classList.add('hidden');      // ซ่อนช่องเลือกไฟล์
+                carInput.required = false;
+            }
+        } catch (err) { console.error("Auto-match error:", err); }
+    } else { carField.classList.add('hidden'); }
+
+    document.getElementById('upload-attachments-modal').style.display = 'flex';
+}
+
+// [แก้ไขทั้งฟังก์ชัน] handleAttachmentsSubmit เพื่อรวมไฟล์จาก URL
+async function handleAttachmentsSubmit(e) {
+    e.preventDefault();
+    const requestId = document.getElementById('attach-request-id').value;
+    const user = getCurrentUser();
+    toggleLoader('merge-files-button', true);
+
+    try {
+        const formData = new FormData();
+        formData.append('files', window.currentMainPDF, '01_บันทึกข้อความ.pdf');
+
+        const addFile = (id, label) => {
+            const input = document.getElementById(id);
+            if (input && input.files[0]) formData.append('files', input.files[0], label + "_" + input.files[0].name);
+        };
+
+        addFile('file-exchange', '02_บันทึกขอแลกคาบ');
+        addFile('file-original', '03_หนังสือต้นเรื่อง');
+
+        const autoCarUrl = document.getElementById('auto-car-pdf-url').value;
+        if (autoCarUrl) {
+            // ถ้าพบข้อมูลอัตโนมัติ ให้ดึงจาก URL มา Merge
+            const res = await fetch(autoCarUrl);
+            const blob = await res.blob();
+            formData.append('files', blob, '04_บันทึกรถส่วนตัว_AUTO.pdf');
+        } else {
+            addFile('file-car', '04_บันทึกรถส่วนตัว');
+        }
+
+        const others = document.getElementById('file-others').files;
+        for (let i = 0; i < others.length; i++) formData.append('files', others[i], `05_อื่นๆ_${i}_${others[i].name}`);
+
+        const response = await fetch(`${PDF_ENGINE_CONFIG.BASE_URL}pdf/merge`, { method: "POST", body: formData });
+        if (!response.ok) throw new Error("Merge Service Error");
+        
+        const mergedBlob = await response.blob();
+        const base64 = await blobToBase64(mergedBlob);
+        const upload = await apiCall('POST', 'uploadGeneratedFile', {
+            data: base64, filename: `เอกสารรวม_${requestId.replace(/\//g,'-')}.pdf`, mimeType: 'application/pdf', username: user.username
+        });
+
+        if (upload.status === 'success') {
+            await db.collection('requests').doc(requestId.replace(/[\/\\:\.]/g, '-')).set({ pdfUrl: upload.url, status: 'รอการตรวจสอบ' }, { merge: true });
+            document.getElementById('upload-attachments-modal').style.display = 'none';
+            window.open(upload.url, '_blank');
+            await fetchUserRequests(); switchPage('dashboard-page');
+        }
+    } catch (error) { showAlert('ผิดพลาด', error.message); } finally { toggleLoader('merge-files-button', false); }
 }
