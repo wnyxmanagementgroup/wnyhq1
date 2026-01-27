@@ -918,6 +918,18 @@ async function handleRequestFormSubmit(e) {
     const user = getCurrentUser();
     if (!user) return;
 
+    // ดึงข้อมูลพื้นฐาน
+    const expenseOption = document.querySelector('input[name="expense_option"]:checked').value;
+    
+    // ตรวจสอบลายเซ็นกรณีไม่เบิกเงิน
+    let signatureBase64 = null;
+    if (expenseOption === 'no') {
+        if (!signaturePad || signaturePad.isEmpty()) {
+            return showAlert('แจ้งเตือน', 'กรุณาลงลายชื่อในช่องสีเหลี่ยมด้านล่างก่อนบันทึก');
+        }
+        signatureBase64 = signaturePad.toDataURL(); // ดึงภาพลายเซ็น
+    }
+
     const formData = {
         username: user.username,
         docDate: document.getElementById('form-doc-date').value,
@@ -929,41 +941,39 @@ async function handleRequestFormSubmit(e) {
         endDate: document.getElementById('form-end-date').value,
         attendees: Array.from(document.querySelectorAll('#form-attendees-list > div')).map(div => {
             const select = div.querySelector('.attendee-position-select');
-            return { name: div.querySelector('.attendee-name').value, position: select.value };
+            let pos = select.value === 'other' ? div.querySelector('.attendee-position-other').value : select.value;
+            return { name: div.querySelector('.attendee-name').value, position: pos };
         }).filter(att => att.name),
-        expenseOption: document.querySelector('input[name="expense_option"]:checked').value,
-        vehicleOption: document.querySelector('input[name="vehicle_option"]:checked').value,
+        expenseOption: expenseOption,
+        vehicleOption: document.querySelector('input[name="vehicle_option"]:checked')?.value || 'gov',
         licensePlate: document.getElementById('form-license-plate').value,
         department: document.getElementById('form-department').value,
-        headName: document.getElementById('form-head-name').value
+        headName: document.getElementById('form-head-name').value,
+        signatureBase64: signatureBase64, // ส่งลายเซ็นไปด้วย
+        role: 'requester' // ระบุตำแหน่งเพื่อพิกัด PDF
     };
+
+    // แปลงข้อมูลตัวเลขเป็นเลขไทยก่อนสร้างเอกสาร
+    const formDataThai = JSON.parse(JSON.stringify(formData));
+    formDataThai.totalExpense = toThaiDigits(formDataThai.totalExpense);
 
     toggleLoader('submit-request-button', true);
     
     try {
-        // ตรวจสอบเงื่อนไขรถส่วนตัว
-        if (formData.vehicleOption === 'private') {
-            const vhQuery = await db.collection('vehicle_requests')
-                .where('licensePlate', '==', formData.licensePlate)
-                .where('startDate', '==', formData.startDate)
-                .where('username', '==', formData.username).get();
-
-            if (vhQuery.empty || formData.expenseOption !== 'no') {
-                showAlert('ย้ายไปหน้าบันทึกรถ', 'ระบบไม่พบใบขอใช้รถหรือเป็นการเบิกจ่าย โปรดกรอกข้อมูลรถก่อน');
-                sessionStorage.setItem('pendingTravelRequest', JSON.stringify(formData));
-                switchPage('vehicle-page');
-                return;
-            }
-        }
-
         let result = await apiCall('POST', 'createRequest', formData);
         if (result.status === 'success') {
-            const { pdfBlob } = await generateOfficialPDF({...formData, doctype: 'memo', id: result.data.id});
+            const { pdfBlob } = await generateOfficialPDF({...formDataThai, doctype: 'memo', id: result.data.id});
+            
             if (formData.expenseOption !== 'no') {
                 const upload = await apiCall('POST', 'uploadGeneratedFile', {
-                    data: await blobToBase64(pdfBlob), filename: `บันทึก_${result.data.id.replace(/\//g,'-')}.pdf`, username: user.username
+                    data: await blobToBase64(pdfBlob), 
+                    filename: `บันทึก_${result.data.id.replace(/\//g,'-')}.pdf`, 
+                    username: user.username
                 });
-                await db.collection('requests').doc(result.data.id.replace(/\//g,'-')).set({ pdfUrl: upload.url, status: 'รอแอดมินตรวจสอบ (1)' }, { merge: true });
+                await db.collection('requests').doc(result.data.id.replace(/\//g,'-')).set({ 
+                    pdfUrl: upload.url, 
+                    status: 'รอแอดมินตรวจสอบ (1)' 
+                }, { merge: true });
                 window.open(upload.url, '_blank');
                 switchPage('dashboard-page');
             } else {
@@ -972,7 +982,11 @@ async function handleRequestFormSubmit(e) {
                 openAttachmentModal(result.data.id, formData);
             }
         }
-    } catch (error) { showAlert('ผิดพลาด', error.message); } finally { toggleLoader('submit-request-button', false); }
+    } catch (error) { 
+        showAlert('ผิดพลาด', error.message); 
+    } finally { 
+        toggleLoader('submit-request-button', false); 
+    }
 }
 
 // 2. ฟังก์ชันบันทึกใบขอใช้รถส่วนตัว (Vehicle Request)
@@ -1746,4 +1760,50 @@ async function handleAttachmentsSubmit(e) {
             await fetchUserRequests(); switchPage('dashboard-page');
         }
     } catch (error) { showAlert('ผิดพลาด', error.message); } finally { toggleLoader('merge-files-button', false); }
+}
+
+
+
+// เรียกใช้งานเมื่อโหลดหน้าเว็บ
+document.addEventListener('DOMContentLoaded', initSignaturePad);
+function toThaiDigits(str) {
+    if (str === null || str === undefined) return '';
+    const thaiDigits = ['๐', '๑', '๒', '๓', '๔', '๕', '๖', '๗', '๘', '๙'];
+    return str.toString().replace(/[0-9]/g, (digit) => thaiDigits[digit]);
+}
+// --- ระบบลายเซ็นอิเล็กทรอนิกส์ ---
+let signaturePad; // ประกาศตัวแปรไว้ใน Global Scope
+
+function initSignaturePad() {
+    const canvas = document.getElementById('signature-pad');
+    if (!canvas) return;
+
+    // สร้าง Instance ของ SignaturePad
+    signaturePad = new SignaturePad(canvas, {
+        backgroundColor: 'rgba(255, 255, 255, 0)',
+        penColor: 'rgb(0, 0, 0)',
+        minWidth: 2,
+        maxWidth: 4
+    });
+
+    // ฟังก์ชันปรับขนาด Canvas (แก้ปัญหาหน้าจอขาว)
+    window.resizeSignatureCanvas = function() {
+        if (!canvas.offsetWidth || !canvas.offsetHeight) return; // ถ้า Element ยังซ่อนอยู่ ไม่ต้องทำ
+
+        const ratio = Math.max(window.devicePixelRatio || 1, 1);
+        canvas.width = canvas.offsetWidth * ratio;
+        canvas.height = canvas.offsetHeight * ratio;
+        canvas.getContext("2d").scale(ratio, ratio);
+        signaturePad.clear(); // ล้างหน้าจอหลังปรับพิกัด
+        console.log("✅ Signature Canvas Resized:", canvas.width, "x", canvas.height);
+    };
+
+    // ตั้งค่าปุ่มล้างลายเซ็น
+    const clearBtn = document.getElementById('clear-signature');
+    if (clearBtn) {
+        clearBtn.addEventListener('click', () => signaturePad.clear());
+    }
+
+    // ปรับขนาดทันทีเมื่อเรียกใช้
+    resizeSignatureCanvas();
 }

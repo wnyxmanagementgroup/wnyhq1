@@ -30,9 +30,16 @@ async function switchPage(targetPageId) {
         showReminderModal();
     }
     
-    if (targetPageId === 'form-page') { 
+   if (targetPageId === 'form-page') { 
         await resetRequestForm(); 
-        setTimeout(() => { tryAutoFillRequester(); }, 100); 
+        setTimeout(() => { 
+            tryAutoFillRequester(); 
+            // 🔥 เรียกฟังก์ชันตั้งค่าลายเซ็นหลังจากหน้าจอแสดงผลแล้ว 200ms
+            if (typeof initSignaturePad === 'function') {
+                initSignaturePad();
+                if (window.resizeSignatureCanvas) window.resizeSignatureCanvas();
+            }
+        }, 200); 
     }
     
     if (targetPageId === 'profile-page') {
