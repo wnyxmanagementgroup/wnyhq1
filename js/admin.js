@@ -1251,60 +1251,63 @@ const modalContent = document.querySelector('#admin-approval-modal .modal-body')
 
 // 2. ฟังก์ชันส่งลายเซ็นไปประมวลผลบน Cloud Run
 async function handleAdminApprovalSignature(requestId, pdfUrl, roleName) {
+    // 1. ตรวจสอบว่ามีการเซ็นชื่อหรือยัง
     if (adminSignaturePad.isEmpty()) {
         return showAlert('แจ้งเตือน', 'กรุณาลงลายมือชื่อก่อนกดยืนยัน');
     }
 
     if (!pdfUrl) return showAlert('ผิดพลาด', 'ไม่พบไฟล์ PDF ต้นฉบับ');
 
-    toggleLoader('btn-approve-request', true);
+    // ใช้ ID ปุ่มให้ตรงกับใน index.html (admin-submit-approval)
+    toggleLoader('admin-submit-approval', true); 
 
     try {
         const signatureBase64 = adminSignaturePad.toDataURL('image/png');
         
-        // ส่งไปที่ Cloud Run Endpoint ใหม่ที่สร้างไว้ (/pdf/sign)
+        // 2. ส่งไปที่ Cloud Run เพื่อประทับลายเซ็น + ติ๊กถูก (ตามบทบาท)
         const response = await fetch(`${PDF_ENGINE_CONFIG.BASE_URL}pdf/sign`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 pdfUrl: pdfUrl,
                 signatureBase64: signatureBase64,
-                role: roleName, // ส่งชื่อตำแหน่งไปเพื่อเลือกพิกัด X, Y
+                role: roleName, // ส่งบทบาทไป (เช่น 'vice_academic') เพื่อให้ Server รู้ว่าต้องประทับจุดไหน
                 requestId: requestId
             })
         });
 
-        if (!response.ok) throw new Error('การประทับลายเซ็นล้มเหลว');
+        if (!response.ok) throw new Error('การประทับลายเซ็นที่ Server ล้มเหลว');
 
         const signedBlob = await response.blob();
         
-        // อัปโหลดไฟล์ที่เซ็นแล้วกลับเข้า Google Drive
+        // 3. อัปโหลดไฟล์ PDF ฉบับอัปเดตกลับเข้า Google Drive
         const base64Data = await blobToBase64(signedBlob);
         const uploadResult = await apiCall('POST', 'uploadGeneratedFile', {
             data: base64Data,
-            filename: `อนุมัติแล้ว_${requestId.replace(/\//g,'-')}.pdf`,
+            filename: `อนุมัติ_${roleName}_${requestId.replace(/\//g,'-')}.pdf`, // ตั้งชื่อไฟล์ให้รู้ว่าใครเซ็นล่าสุด
             mimeType: 'application/pdf',
-            username: 'ADMIN_SIGNED'
+            username: getCurrentUser()?.username || 'ADMIN_SIGNED'
         });
 
         if (uploadResult.status === 'success') {
-            // อัปเดตสถานะและลิงก์ไฟล์ใหม่ใน Firestore
-            const safeId = requestId.replace(/[\/\\:\.]/g, '-');
-            await db.collection('requests').doc(safeId).set({
-                pdfUrl: uploadResult.url,
-                status: 'อนุมัติแล้ว',
-                lastSignedBy: roleName
-            }, { merge: true });
+            // 4. 🔥 เรียก Workflow Manager เพื่อส่งไม้ต่อให้คนถัดไปทันที
+            // (ฟังก์ชันนี้จะอัปเดต Firebase และส่ง LINE Notify ให้เอง)
+            await processNextStep(requestId, roleName, uploadResult.url);
 
-            showAlert('สำเร็จ', 'ลงนามอนุมัติและอัปเดตเอกสารเรียบร้อยแล้ว');
+            // ปิดหน้าต่างและรีเฟรชข้อมูล
             document.getElementById('admin-approval-modal').style.display = 'none';
-            await fetchAllRequestsForCommand(); // โหลดรายการใหม่
+            if (typeof fetchAllRequestsForCommand === 'function') {
+                await fetchAllRequestsForCommand();
+            }
+        } else {
+            throw new Error('บันทึกไฟล์ไม่สำเร็จ: ' + uploadResult.message);
         }
+
     } catch (error) {
-        console.error(error);
+        console.error("Approval Error:", error);
         showAlert('ผิดพลาด', 'เกิดข้อผิดพลาด: ' + error.message);
     } finally {
-        toggleLoader('btn-approve-request', false);
+        toggleLoader('admin-submit-approval', false);
     }
 }
 // 1. แอดมินตรวจสอบและส่งต่องาน (Gatekeeper)
