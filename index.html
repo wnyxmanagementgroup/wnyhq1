@@ -356,9 +356,9 @@
                             <label class="form-label text-indigo-700 font-bold mb-2 flex items-center gap-2">
                             <span>✍️</span> ลงลายมือชื่ออิเล็กทรอนิกส์ (สำหรับกรณีไม่เบิกเงินเท่านั้น)
                             </label>
-                        <div class="bg-white border-2 border-dashed border-gray-300 rounded-lg overflow-hidden">
-                            <canvas id="signature-pad" class="w-full h-40 cursor-crosshair"style="touch-action: none;"></canvas>
-                        </div>
+                        <div class="bg-white border-2 border-dashed border-gray-300 rounded-lg overflow-hidden max-w-md mx-auto">
+    <canvas id="signature-pad" class="w-full h-40 cursor-crosshair" style="touch-action: none;"></canvas>
+</div>
                         <div class="flex justify-between mt-2">
                             <button type="button" id="clear-signature" class="text-xs text-red-500 hover:underline">ล้างหน้าจอ</button>
                              <p class="text-[10px] text-gray-400">* ใช้เมาส์หรือนิ้วเขียนลงในกรอบ</p>
@@ -1206,7 +1206,28 @@
 </div>
 </div>
 </div>
-    
+ <div id="admin-approval-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 animate-fade-in">
+        <h3 class="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+            ✍️ ลงนามอนุมัติเอกสาร
+        </h3>
+        <p class="text-gray-600 text-sm mb-4">กรุณาลงลายมือชื่ออิเล็กทรอนิกส์ในช่องด้านล่างเพื่อยืนยันการอนุมัติ</p>
+        
+        <div class="border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 overflow-hidden mb-4">
+            <canvas id="signature-pad-admin" class="w-full h-48 cursor-crosshair" style="touch-action: none;"></canvas>
+        </div>
+
+        <div class="flex justify-between items-center mb-6">
+            <button type="button" id="clear-admin-sig" class="text-red-500 hover:text-red-700 text-sm font-bold">🧹 ล้างหน้าจอ</button>
+            <span class="text-xs text-gray-400">* ใช้เมาส์หรือนิ้วเขียนลงในกรอบ</span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+            <button type="button" onclick="document.getElementById('admin-approval-modal').style.display='none'" class="btn bg-gray-100 text-gray-700 py-3 rounded-xl font-bold hover:bg-gray-200">ยกเลิก</button>
+            <button type="button" id="admin-submit-approval" class="btn bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 shadow-lg">ยืนยันการอนุมัติ</button>
+        </div>
+    </div>
+</div>   
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>

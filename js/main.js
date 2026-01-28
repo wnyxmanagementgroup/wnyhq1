@@ -214,7 +214,8 @@ document.getElementById('admin-view-memos-tab')?.addEventListener('click', async
     document.getElementById('attachments-form')?.addEventListener('submit', handleAttachmentsSubmit);
     
     // 2. ล้างลายเซ็น (Signature Pad Controls)
-    document.getElementById('clear-travel-sig')?.addEventListener('click', () => { if (travelSignaturePad) travelSignaturePad.clear(); });
+    // 2. ล้างลายเซ็น (ปรับให้ตรงกับ ID ใน index.html และตัวแปรใน requests.js)
+document.getElementById('clear-signature')?.addEventListener('click', () => { if (signaturePad) signaturePad.clear(); });
     document.getElementById('clear-vehicle-sig')?.addEventListener('click', () => { if (vehicleSignaturePad) vehicleSignaturePad.clear(); });
     document.getElementById('clear-admin-sig')?.addEventListener('click', () => { if (adminSignaturePad) adminSignaturePad.clear(); });
 

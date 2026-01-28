@@ -1778,32 +1778,28 @@ function initSignaturePad() {
     const canvas = document.getElementById('signature-pad');
     if (!canvas) return;
 
-    // สร้าง Instance ของ SignaturePad
+    // ตรวจสอบว่ามีการสร้าง instance ไปหรือยัง ถ้ามีแล้วให้ล้างค่าเก่าก่อน
+    if (signaturePad) {
+        signaturePad.off(); // ปิด event เก่า
+    }
+
+    // สร้าง Instance ใหม่พร้อมตั้งค่าตามที่คุณต้องการ (สีน้ำเงิน 0.5)
     signaturePad = new SignaturePad(canvas, {
         backgroundColor: 'rgba(255, 255, 255, 0)',
-        penColor: 'rgb(0, 0, 0)',
-        minWidth: 2,
-        maxWidth: 4
+        penColor: 'rgb(0, 0, 255)', // หมึกน้ำเงิน
+        minWidth: 1,               // เส้น 0.5
+        maxWidth: 1
     });
 
-    // ฟังก์ชันปรับขนาด Canvas (แก้ปัญหาหน้าจอขาว)
+    // ฟังก์ชันปรับขนาด (คงเดิม)
     window.resizeSignatureCanvas = function() {
-        if (!canvas.offsetWidth || !canvas.offsetHeight) return; // ถ้า Element ยังซ่อนอยู่ ไม่ต้องทำ
-
+        if (!canvas.offsetWidth || !canvas.offsetHeight) return;
         const ratio = Math.max(window.devicePixelRatio || 1, 1);
         canvas.width = canvas.offsetWidth * ratio;
         canvas.height = canvas.offsetHeight * ratio;
         canvas.getContext("2d").scale(ratio, ratio);
-        signaturePad.clear(); // ล้างหน้าจอหลังปรับพิกัด
-        console.log("✅ Signature Canvas Resized:", canvas.width, "x", canvas.height);
+        signaturePad.clear();
     };
 
-    // ตั้งค่าปุ่มล้างลายเซ็น
-    const clearBtn = document.getElementById('clear-signature');
-    if (clearBtn) {
-        clearBtn.addEventListener('click', () => signaturePad.clear());
-    }
-
-    // ปรับขนาดทันทีเมื่อเรียกใช้
     resizeSignatureCanvas();
 }

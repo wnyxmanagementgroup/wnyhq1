@@ -1231,12 +1231,22 @@ async function prepareApprovalModal(requestId, pdfUrl) {
     } else {
         adminSignaturePad.clear();
     }
+const modalContent = document.querySelector('#admin-approval-modal .modal-body');
+    modalContent.insertAdjacentHTML('afterbegin', `
+        <div class="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+            <label class="flex items-center gap-2 font-bold text-blue-800">
+                <input type="checkbox" id="admin-confirm-tick" checked class="h-5 w-5">
+                ประทับตรา "อนุญาต / อนุมัติ" ลงในแบบฟอร์ม
+            </label>
+        </div>
+    `);
 
     // ปรับขนาด Canvas ให้พอดีกับหน้าจอ
     const ratio = Math.max(window.devicePixelRatio || 1, 1);
     canvas.width = canvas.offsetWidth * ratio;
     canvas.height = canvas.offsetHeight * ratio;
     canvas.getContext("2d").scale(ratio, ratio);
+    
 }
 
 // 2. ฟังก์ชันส่งลายเซ็นไปประมวลผลบน Cloud Run
