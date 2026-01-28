@@ -225,7 +225,16 @@ async function handleDispatchFormSubmit(e) {
     e.preventDefault();
     const requestId = document.getElementById('dispatch-request-id').value;
     
+    // 🔥 จุดสำคัญ: ต้องหาข้อมูลคำขอต้นฉบับจาก Cache เพื่อดึงค่า purpose, location, และวันที่
+    const originalRequest = allRequestsCache.find(r => r.id === requestId || r.requestId === requestId);
+    
+    if (!originalRequest) {
+        showAlert('ผิดพลาด', 'ไม่พบข้อมูลคำขอต้นฉบับ กรุณารีเฟรชหน้าจอแล้วลองใหม่');
+        return;
+    }
+
     const requestData = {
+        ...originalRequest, // นำข้อมูลพื้นฐานทั้งหมดมาใช้ (purpose, location, dates)
         doctype: 'dispatch',
         id: requestId, 
         dispatchMonth: document.getElementById('dispatch-month').value, 
@@ -238,29 +247,13 @@ async function handleDispatchFormSubmit(e) {
     toggleLoader('dispatch-submit-button', true);
     
     try {
-        // 1. สร้างผ่าน Cloud Run
-        console.log("🚀 Generating Dispatch via Cloud Run...");
+        // ส่งข้อมูลที่รวมรายละเอียดคำขอแล้วไปสร้าง PDF
         const { pdfBlob } = await generateOfficialPDF(requestData);
         
-        // ★★★ UX Improvement: เปิดไฟล์ทันที ★★★
         const tempPdfUrl = URL.createObjectURL(pdfBlob);
         window.open(tempPdfUrl, '_blank');
         
-        // แจ้งเตือนสถานะ
-        const modalBody = document.querySelector('#dispatch-modal .modal-content'); // หรือจุดที่ต้องการแสดง
-        if(modalBody) {
-            // สร้าง element แจ้งเตือนชั่วคราว
-            const msg = document.createElement('div');
-            msg.id = 'dispatch-saving-msg';
-            msg.className = 'text-center text-blue-600 font-bold mt-2 animate-pulse';
-            msg.innerText = 'กำลังบันทึกไฟล์ลงระบบ...';
-            modalBody.appendChild(msg);
-        }
-
-        // 2. Background Process: อัปโหลด
-        console.log("⏳ Uploading to Drive...");
         const pdfBase64 = await blobToBase64(pdfBlob);
-        
         const uploadResult = await apiCall('POST', 'uploadGeneratedFile', {
             data: pdfBase64,
             filename: `หนังสือส่ง_${requestId.replace(/\//g,'-')}.pdf`,
@@ -268,35 +261,18 @@ async function handleDispatchFormSubmit(e) {
             username: requestData.createdby
         });
         
-        if (uploadResult.status !== 'success') throw new Error("Upload failed");
-        const permanentPdfUrl = uploadResult.url;
-
-        // 3. Background Process: บันทึก Sheet
-        requestData.preGeneratedPdfUrl = permanentPdfUrl;
-        await apiCall('POST', 'generateDispatchBook', requestData);
-
-        // 4. Background Process: บันทึก Firestore
-        const safeId = requestId.replace(/[\/\\:\.]/g, '-');
-        if (typeof db !== 'undefined') {
-             try {
-                await db.collection('requests').doc(safeId).set({
-                    dispatchBookPdfUrl: permanentPdfUrl
-                }, { merge: true });
-             } catch (e) {}
+        if (uploadResult.status === 'success') {
+            const safeId = requestId.replace(/[\/\\:\.]/g, '-');
+            await db.collection('requests').doc(safeId).set({
+                dispatchBookPdfUrl: uploadResult.url
+            }, { merge: true });
+            
+            document.getElementById('dispatch-modal').style.display = 'none';
+            showAlert('สำเร็จ', 'บันทึกหนังสือส่งเรียบร้อยแล้ว');
+            await fetchAllRequestsForCommand();
         }
-
-        // เสร็จสิ้น
-        const msg = document.getElementById('dispatch-saving-msg');
-        if(msg) msg.remove();
-
-        document.getElementById('dispatch-modal').style.display = 'none';
-        document.getElementById('dispatch-form').reset();
-        showAlert('สำเร็จ', 'บันทึกหนังสือส่งเรียบร้อยแล้ว');
-        
-        await fetchAllRequestsForCommand();
-
     } catch (error) {
-        showAlert('แจ้งเตือน', 'เปิดไฟล์สำเร็จ แต่บันทึกไม่ผ่าน: ' + error.message);
+        showAlert('แจ้งเตือน', 'เปิดไฟล์ได้ แต่การบันทึกขัดข้อง: ' + error.message);
     } finally {
         toggleLoader('dispatch-submit-button', false);
     }
