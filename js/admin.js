@@ -1347,3 +1347,74 @@ async function handleCommandNumbering(requestId) {
     const directorLink = `${window.location.origin}?action=director-sign&id=${requestId}`;
     await sendLineNotification(directorLink, "โปรดลงนามคำสั่ง", "DIRECTOR");
 }
+// --- WORKFLOW MANAGER: จัดการการส่งต่อและแจ้งเตือน ---
+async function processNextStep(requestId, currentRole, pdfUrl) {
+    try {
+        console.log(`🔄 Processing workflow for: ${requestId} (Current: ${currentRole})`);
+        
+        // 1. แผนผังการเดินเอกสาร (Workflow Map)
+        // key คือ role ปัจจุบัน -> value คือ role ถัดไปที่ต้องส่งหา
+        const workflow = {
+            'head': { 
+                nextRole: 'vice_academic', 
+                targetGroup: 'VICE_ACADEMIC', 
+                status: 'รอรองฯ วิชาการพิจารณา',
+                msg: 'หัวหน้ากลุ่มสาระฯ ลงนามแล้ว โปรดพิจารณาต่อ'
+            },
+            'vice_academic': { 
+                nextRole: 'vice_personnel', 
+                targetGroup: 'VICE_PERSONNEL', 
+                status: 'รอรองฯ บุคคลพิจารณา',
+                msg: 'รองฯ วิชาการลงนามแล้ว โปรดพิจารณาต่อ'
+            },
+            'vice_personnel': { 
+                nextRole: 'director', 
+                targetGroup: 'DIRECTOR', 
+                status: 'รอผู้อำนวยการพิจารณา',
+                msg: 'รองฯ บุคคลลงนามแล้ว โปรดพิจารณาอนุมัติ'
+            },
+            'director': { 
+                nextRole: 'finished', 
+                targetGroup: 'SARABAN', 
+                status: 'อนุมัติเรียบร้อย',
+                msg: 'ผู้อำนวยการอนุมัติแล้ว โปรดดำเนินการออกเลขคำสั่ง'
+            }
+        };
+
+        // ตรวจสอบว่ามีขั้นตอนถัดไปไหม
+        // (กรณี role ชื่อภาษาไทย ให้ map กลับเป็น key ภาษาอังกฤษก่อนถ้าจำเป็น)
+        let roleKey = currentRole;
+        if (currentRole.includes('วิชาการ')) roleKey = 'vice_academic';
+        if (currentRole.includes('บุคคล')) roleKey = 'vice_personnel';
+        if (currentRole.includes('ผู้อำนวยการ')) roleKey = 'director';
+        
+        const nextStep = workflow[roleKey];
+        
+        if (!nextStep) {
+            console.log("🏁 สิ้นสุด Workflow หรือไม่พบขั้นตอนถัดไป");
+            return;
+        }
+
+        // 2. อัปเดตสถานะใน Firebase
+        const safeId = requestId.replace(/[\/\\:\.]/g, '-');
+        await db.collection('requests').doc(safeId).update({
+            status: nextStep.status,
+            currentStep: nextStep.nextRole,
+            pdfUrl: pdfUrl, // อัปเดตลิงก์ไฟล์ล่าสุด
+            lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+        // 3. สร้างลิงก์สำหรับคนต่อไป
+        // ส่ง action=sign เพื่อให้เปิด Modal เซ็นชื่อทันที
+        const nextLink = `${window.location.origin}?action=sign&id=${requestId}&role=${nextStep.nextRole}`;
+
+        // 4. ส่งไลน์แจ้งเตือน
+        await sendLineNotification(nextLink, `📢 งานใหม่: ${requestId}\n${nextStep.msg}`, nextStep.targetGroup);
+
+        showAlert('สำเร็จ', `ส่งเรื่องต่อไปยัง ${nextStep.targetGroup} เรียบร้อยแล้ว`);
+
+    } catch (error) {
+        console.error("Workflow Error:", error);
+        showAlert('แจ้งเตือน', 'บันทึกข้อมูลได้ แต่การแจ้งเตือนไลน์ขัดข้อง: ' + error.message);
+    }
+}
