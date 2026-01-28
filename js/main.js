@@ -167,7 +167,28 @@ function setupEventListeners() {
     document.getElementById('dispatch-form')?.addEventListener('submit', handleDispatchFormSubmit);
     document.getElementById('admin-memo-action-form')?.addEventListener('submit', handleAdminMemoActionSubmit);
     document.getElementById('send-memo-form')?.addEventListener('submit', handleMemoSubmitFromModal);
-    
+    // --- ส่วนควบคุมแท็บในหน้าจัดการบันทึกและคำสั่ง ---
+document.getElementById('admin-view-requests-tab')?.addEventListener('click', async function() {
+    // สลับสถานะปุ่ม
+    this.classList.add('active');
+    document.getElementById('admin-view-memos-tab').classList.remove('active');
+    // สลับการแสดงผลหน้าจอ
+    document.getElementById('admin-requests-view').classList.remove('hidden');
+    document.getElementById('admin-memos-view').classList.add('hidden');
+    // โหลดข้อมูลใหม่
+    if (typeof fetchAllRequestsForCommand === 'function') await fetchAllRequestsForCommand();
+});
+
+document.getElementById('admin-view-memos-tab')?.addEventListener('click', async function() {
+    // สลับสถานะปุ่ม
+    this.classList.add('active');
+    document.getElementById('admin-view-requests-tab').classList.remove('active');
+    // สลับการแสดงผลหน้าจอ
+    document.getElementById('admin-memos-view').classList.remove('hidden');
+    document.getElementById('admin-requests-view').classList.add('hidden');
+    // โหลดข้อมูลใหม่
+    if (typeof fetchAllMemos === 'function') await fetchAllMemos();
+});
     // --- Stats ---
     document.getElementById('refresh-stats')?.addEventListener('click', async () => { 
         if(typeof loadStatsData === 'function') {
