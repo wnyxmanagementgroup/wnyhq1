@@ -1256,53 +1256,85 @@ function blobToBase64(blob) {
 let adminSignaturePad; // ตัวแปรเก็บสถานะ Signature Pad
 
 // 1. ฟังก์ชันเตรียม Modal และเปิดใช้งานกระดานเซ็นชื่อ
+// 1. ฟังก์ชันเตรียม Modal และเปิดใช้งานกระดานเซ็นชื่อ
 async function prepareApprovalModal(requestId, pdfUrl) {
     const user = getCurrentUser();
+    // ตรวจสอบสิทธิ์
     if (!user || (user.role !== 'admin' && !user.position.includes('รองผู้อำนวยการ') && !user.position.includes('ผู้อำนวยการ'))) {
         return showAlert('ปฏิเสธการเข้าถึง', 'ฟังก์ชันนี้เฉพาะผู้บริหารเท่านั้น');
     }
 
     // แสดง Modal
     const modal = document.getElementById('admin-approval-modal');
+    if (!modal) {
+        console.error("ไม่พบ Modal: admin-approval-modal");
+        return;
+    }
     modal.style.display = 'flex';
     
-    // แสดงตำแหน่งใน Modal
-    document.getElementById('admin-role-display').innerText = user.position;
+    // --- จุดที่แก้ 1: ตรวจสอบ Element ก่อนใส่ข้อความ (ป้องกัน Error) ---
+    const roleDisplay = document.getElementById('admin-role-display');
+    if (roleDisplay) {
+        roleDisplay.innerText = user.position;
+    }
     
-    // ตั้งค่าปุ่มบันทึก
-    const approveBtn = document.getElementById('btn-approve-request');
-    approveBtn.onclick = () => handleAdminApprovalSignature(requestId, pdfUrl, user.position);
+    // --- จุดที่แก้ 2: แก้ ID ปุ่มให้ตรงกับ index.html ---
+    // เดิม: btn-approve-request -> ใหม่: admin-submit-approval
+    const approveBtn = document.getElementById('admin-submit-approval');
+    if (approveBtn) {
+        // ล้าง Event เก่าก่อนเพื่อป้องกันการกดซ้ำ
+        const newBtn = approveBtn.cloneNode(true);
+        approveBtn.parentNode.replaceChild(newBtn, approveBtn);
+        
+        newBtn.onclick = () => handleAdminApprovalSignature(requestId, pdfUrl, user.position);
+    } else {
+        console.error("ไม่พบปุ่ม: admin-submit-approval");
+    }
 
     // เริ่มต้น Signature Pad (ถ้ายังไม่มี)
     const canvas = document.getElementById('signature-pad-admin');
     if (!adminSignaturePad) {
         adminSignaturePad = new SignaturePad(canvas, {
             backgroundColor: 'rgba(255, 255, 255, 0)',
-            penColor: 'rgb(0, 0, 128)' // สีน้ำเงินเข้ม
+            penColor: 'rgb(0, 0, 255)', // สีน้ำเงิน
+            minWidth: 0.5,
+            maxWidth: 0.5
         });
         
-        // ฟังก์ชันล้างหน้าจอ
-        document.getElementById('clear-admin-sig').onclick = () => adminSignaturePad.clear();
-        document.getElementById('close-approval-modal').onclick = () => modal.style.display = 'none';
+        // ปุ่มล้างหน้าจอ
+        const clearBtn = document.getElementById('clear-admin-sig');
+        if (clearBtn) clearBtn.onclick = () => adminSignaturePad.clear();
+        
+        // --- จุดที่แก้ 3: ลบการผูกปุ่มปิดที่ไม่จำเป็นออก (เพราะใน HTML มี inline onclick แล้ว) ---
+        
     } else {
         adminSignaturePad.clear();
     }
-const modalContent = document.querySelector('#admin-approval-modal .modal-body');
-    modalContent.insertAdjacentHTML('afterbegin', `
-        <div class="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-            <label class="flex items-center gap-2 font-bold text-blue-800">
-                <input type="checkbox" id="admin-confirm-tick" checked class="h-5 w-5">
-                ประทับตรา "อนุญาต / อนุมัติ" ลงในแบบฟอร์ม
-            </label>
-        </div>
-    `);
 
-    // ปรับขนาด Canvas ให้พอดีกับหน้าจอ
+    // ปรับขนาด Canvas ให้พอดี
     const ratio = Math.max(window.devicePixelRatio || 1, 1);
     canvas.width = canvas.offsetWidth * ratio;
     canvas.height = canvas.offsetHeight * ratio;
     canvas.getContext("2d").scale(ratio, ratio);
-    
+
+    // ส่วน Checkbox ประทับตรา
+    const modalContent = document.querySelector('#admin-approval-modal .bg-white'); // เลือก container ด้านใน
+    if (modalContent && !document.getElementById('admin-confirm-tick')) {
+        // แทรก Checkbox เฉพาะถ้ายังไม่มี
+        const checkboxHTML = `
+            <div class="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200" id="admin-tick-container">
+                <label class="flex items-center gap-2 font-bold text-blue-800 cursor-pointer">
+                    <input type="checkbox" id="admin-confirm-tick" checked class="h-5 w-5 rounded text-blue-600 focus:ring-blue-500">
+                    ประทับตรา "อนุญาต / อนุมัติ" ลงในแบบฟอร์ม
+                </label>
+            </div>
+        `;
+        // แทรกไว้ก่อน Canvas
+        const canvasContainer = modalContent.querySelector('.border-dashed');
+        if (canvasContainer) {
+            canvasContainer.insertAdjacentHTML('beforebegin', checkboxHTML);
+        }
+    }
 }
 
 // 2. ฟังก์ชันส่งลายเซ็นไปประมวลผลบน Cloud Run
