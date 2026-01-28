@@ -726,9 +726,7 @@ function renderAdminRequestsList(requests) {
     container.innerHTML = requests.map(request => {
         const attendeeCount = request.attendeeCount || 0;
         const totalPeople = attendeeCount + 1;
-        let peopleCategory = totalPeople === 1 ? "คำสั่งเดี่ยว" : (totalPeople <= 5 ? "คำสั่งกลุ่มเล็ก" : "คำสั่งกลุ่มใหญ่");
         
-        // --- ส่วนที่เพิ่ม: ตัวแปรสถานะการเบิกเงิน ---
         const isReimburse = request.expenseOption !== 'no';
         const expenseBadge = isReimburse 
             ? `<span class="bg-orange-100 text-orange-800 text-xs font-bold px-2.5 py-1 rounded-full border border-orange-200">🟠 เบิกค่าใช้จ่าย</span>`
@@ -740,80 +738,60 @@ function renderAdminRequestsList(requests) {
         const safeLocation = escapeHtml(request.location);
         const safeDate = `${formatDisplayDate(request.startDate)} - ${formatDisplayDate(request.endDate)}`;
 
-        // แก้ไขใน admin.js ภายในฟังก์ชัน renderAdminRequestsList
-let commandActionButtons = '';
-if (request.commandPdfUrl) {
-    commandActionButtons = `
-        <div class="flex flex-col gap-2 w-full">
-            <div class="flex flex-wrap gap-2 justify-end">
-                <a href="${request.commandPdfUrl}" target="_blank" class="btn bg-blue-600 hover:bg-blue-700 text-white btn-sm flex items-center gap-1 shadow-sm px-3">
-                    📄 ดูคำสั่ง
-                </a>
-                <button onclick="openAdminGenerateCommand('${safeId}')" class="btn bg-yellow-500 hover:bg-yellow-600 text-white btn-sm flex items-center gap-1 shadow-sm px-3">
-                    ✏️ แก้ไข/ออกใหม่
-                </button>
-            </div>
-            <button onclick="prepareApprovalModal('${safeId}', '${request.pdfUrl}')" class="btn bg-purple-600 hover:bg-purple-700 text-white btn-sm w-full shadow-md flex items-center justify-center gap-2 mt-2">
-                ✍️ ลงนามอนุมัติ (สำหรับผู้บริหาร)
-            </button>
-        </div>
-    `;
-} else {
-    // ... ปุ่มออกคำสั่งเดิม ...
-}
+        // --- จุดที่แก้ไข: จัดการปุ่ม Action ของคำสั่ง ---
+        let commandActionButtons = '';
+        if (request.commandPdfUrl) {
+            // กรณีออกคำสั่งแล้ว: แสดงปุ่ม ดู/แก้ไข/ลงนาม
+            commandActionButtons = `
+                <div class="flex flex-col gap-2 w-full">
+                    <div class="flex flex-wrap gap-2 justify-end">
+                        <a href="${request.commandPdfUrl}" target="_blank" class="btn bg-blue-600 hover:bg-blue-700 text-white btn-sm flex items-center gap-1 shadow-sm px-3">
+                            📄 ดูคำสั่ง
+                        </a>
+                        <button onclick="openAdminGenerateCommand('${safeId}')" class="btn bg-yellow-500 hover:bg-yellow-600 text-white btn-sm flex items-center gap-1 shadow-sm px-3">
+                            ✏️ แก้ไข/ออกใหม่
+                        </button>
+                    </div>
+                    <button onclick="prepareApprovalModal('${safeId}', '${request.pdfUrl}')" class="btn bg-purple-600 hover:bg-purple-700 text-white btn-sm w-full shadow-md flex items-center justify-center gap-2 mt-2">
+                        ✍️ ลงนามอนุมัติ (ผู้บริหาร)
+                    </button>
+                </div>`;
+        } else {
+            // 🔥 กรณี "ยังไม่ออกคำสั่ง": เพิ่มปุ่มออกคำสั่งกลับคืนมา
+            commandActionButtons = `
+                <button onclick="openAdminGenerateCommand('${safeId}')" class="btn btn-primary btn-sm w-full shadow-md flex items-center justify-center gap-2">
+                    📜 ออกคำสั่งไปราชการ
+                </button>`;
+        }
 
         return `
         <div class="border rounded-xl p-5 bg-white shadow-sm hover:shadow-md transition duration-200 mb-4 border-l-4 ${request.commandPdfUrl ? 'border-l-green-500' : 'border-l-yellow-400'}">
             <div class="flex justify-between items-start flex-wrap gap-4">
-                
                 <div class="flex-1 min-w-[250px]">
                     <div class="flex items-center gap-2 mb-1">
                         <h4 class="font-bold text-indigo-700 text-lg">${safeId}</h4>
-                        ${expenseBadge} <span class="text-xs px-2 py-0.5 rounded-full ${request.commandPdfUrl ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}">
-                            ${request.commandPdfUrl ? 'ออกคำสั่งแล้ว' : 'รอออกคำสั่ง'}
-                        </span>
+                        ${expenseBadge}
                     </div>
-                    
                     <p class="text-gray-800 font-bold text-md mb-1">${safeName}</p>
                     <p class="text-gray-600 text-sm mb-2">${safePurpose}</p>
-                    
                     <div class="flex items-center gap-4 text-sm text-gray-500 bg-gray-50 p-2 rounded-lg inline-block">
-                        <div class="flex items-center gap-1">
-                            <span>📍</span> ${safeLocation}
-                        </div>
-                        <div class="border-l pl-4 flex items-center gap-1">
-                            <span>📅</span> ${safeDate}
-                        </div>
+                        <div>📍 ${safeLocation}</div>
+                        <div class="border-l pl-4">📅 ${safeDate}</div>
                     </div>
-                    
-                    <p class="text-xs text-gray-400 mt-2">
-                        ผู้ร่วมเดินทาง: ${attendeeCount} คน (รวม ${totalPeople} คน)
-                    </p>
                 </div>
                 
                 <div class="flex flex-col gap-2 items-end w-full md:w-auto">
+                    <button onclick="deleteRequestByAdmin('${safeId}')" class="btn bg-red-100 text-red-600 hover:bg-red-200 btn-xs self-end">🗑️ ลบ</button>
                     
-                    <button onclick="deleteRequestByAdmin('${safeId}')" class="btn bg-red-100 text-red-600 hover:bg-red-200 btn-xs mb-2 flex items-center gap-1 self-end" title="ลบรายการนี้">
-                        🗑️ ลบ
-                    </button>
+                    ${request.pdfUrl ? `<a href="${request.pdfUrl}" target="_blank" class="text-xs text-indigo-500 hover:text-indigo-700 underline mb-1">📎 ดูบันทึกข้อความต้นเรื่อง</a>` : ''}
                     
-                    ${request.pdfUrl ? 
-                        `<a href="${request.pdfUrl}" target="_blank" class="text-xs text-indigo-500 hover:text-indigo-700 underline mb-2 flex items-center gap-1">
-                            📎 ดูบันทึกข้อความต้นเรื่อง
-                        </a>` : ''
-                    }
-                    
-                    ${commandActionButtons}
+                    <div class="w-full">${commandActionButtons}</div>
 
                     <div class="w-full border-t my-1"></div>
 
                     ${!request.dispatchBookPdfUrl ? 
-                        `<button onclick="openDispatchModal('${safeId}')" class="btn bg-purple-50 text-purple-700 hover:bg-purple-100 btn-sm w-full md:w-auto border border-purple-200">
-                            📦 ออกหนังสือส่ง
-                        </button>` : 
-                        `<a href="${request.dispatchBookPdfUrl}" target="_blank" class="btn bg-purple-600 text-white btn-sm w-full md:w-auto">
-                            📦 ดูหนังสือส่ง
-                        </a>`
+                        `<button onclick="openDispatchModal('${safeId}')" class="btn bg-purple-50 text-purple-700 hover:bg-purple-100 btn-sm w-full border border-purple-200">📦 ออกหนังสือส่ง</button>` : 
+                        `<a href="${request.dispatchBookPdfUrl}" target="_blank" class="btn bg-purple-600 text-white btn-sm w-full text-center">📦 ดูหนังสือส่ง</a>`
                     }
                 </div>
             </div>
