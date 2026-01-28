@@ -963,7 +963,51 @@ async function handleRequestFormSubmit(e) {
         let result = await apiCall('POST', 'createRequest', formData);
         if (result.status === 'success') {
             const { pdfBlob } = await generateOfficialPDF({...formDataThai, doctype: 'memo', id: result.data.id});
+            // --- [เพิ่มใหม่] ขั้นตอนการประทับลายเซ็นผู้ขอ (ถ้ามี) ---
+            let signedPdfBlob = pdfBlob; // เริ่มต้นใช้ไฟล์เดิม
             
+            if (formData.signatureBase64 && formData.role === 'requester') {
+                console.log("✍️ กำลังประทับลายเซ็นผู้ขอลงในเอกสาร...");
+                try {
+                    // 1. แปลง PDF Blob เป็น Base64
+                    const pdfBase64 = await blobToBase64(pdfBlob);
+                    
+                    // 2. ส่งไปประทับตราที่ Cloud Run (Endpoint ที่เพิ่งแก้)
+                    const signResponse = await fetch(`${PDF_ENGINE_CONFIG.BASE_URL}pdf/sign`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            pdfBase64: pdfBase64,       // ส่งเนื้อไฟล์ไป
+                            signatureBase64: formData.signatureBase64, // ส่งลายเซ็นไป
+                            role: 'requester'           // บอกว่าเป็นผู้ขอ (เพื่อให้หา [SIG_REQ])
+                        })
+                    });
+
+                    if (signResponse.ok) {
+                        signedPdfBlob = await signResponse.blob(); // อัปเดตเป็นไฟล์ที่มีลายเซ็นแล้ว
+                        console.log("✅ ประทับลายเซ็นเรียบร้อย");
+                    } else {
+                        console.warn("⚠️ การประทับลายเซ็นล้มเหลว (ใช้ไฟล์ต้นฉบับแทน)");
+                    }
+                } catch (signError) {
+                    console.error("Sign Error:", signError);
+                }
+            }
+            
+            // --- จบส่วนเพิ่มใหม่ ---
+
+            // **เปลี่ยน pdfBlob เป็น signedPdfBlob ในโค้ดด้านล่างนี้**
+            if (formData.expenseOption !== 'no') {
+                const upload = await apiCall('POST', 'uploadGeneratedFile', {
+                    data: await blobToBase64(signedPdfBlob), // <--- แก้ตรงนี้
+                    filename: `บันทึก_${result.data.id.replace(/\//g,'-')}.pdf`, 
+                    username: user.username
+                });
+            } else {
+                window.currentMainPDF = signedPdfBlob; // <--- แก้ตรงนี้
+                window.currentFormData = formData;
+                openAttachmentModal(result.data.id, formData);
+            }
             if (formData.expenseOption !== 'no') {
                 const upload = await apiCall('POST', 'uploadGeneratedFile', {
                     data: await blobToBase64(pdfBlob), 
