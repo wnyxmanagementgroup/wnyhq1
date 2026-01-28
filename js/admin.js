@@ -672,42 +672,98 @@ async function generateOfficialPDF(requestData) {
 }
 
 // --- RENDER FUNCTIONS ---
-
-function renderUsersList(users) {
-    const container = document.getElementById('users-content');
-    if (!users || users.length === 0) { 
-        container.innerHTML = '<p class="text-center text-gray-500">ไม่พบข้อมูลผู้ใช้</p>'; 
-        return; 
-    }
+// ฟังก์ชันแสดงรายการคำขอ (Dashboard)
+function renderUserRequests(requests) {
+    const container = document.getElementById('requests-list');
     
-    container.innerHTML = `
-    <div class="overflow-x-auto">
-        <table class="min-w-full bg-white responsive-table">
-            <thead>
-                <tr class="bg-gray-100">
-                    <th class="px-4 py-2 text-left">ชื่อผู้ใช้</th>
-                    <th class="px-4 py-2 text-left">ชื่อ-นามสกุล</th>
-                    <th class="px-4 py-2 text-left">ตำแหน่ง</th>
-                    <th class="px-4 py-2 text-left">กลุ่มสาระ/งาน</th>
-                    <th class="px-4 py-2 text-left">บทบาท</th>
-                    <th class="px-4 py-2 text-left">การจัดการ</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${users.map(user => `
-                <tr class="border-b">
-                    <td class="px-4 py-2" data-label="ชื่อผู้ใช้">${escapeHtml(user.username)}</td>
-                    <td class="px-4 py-2" data-label="ชื่อ-นามสกุล">${escapeHtml(user.fullName)}</td>
-                    <td class="px-4 py-2" data-label="ตำแหน่ง">${escapeHtml(user.position)}</td>
-                    <td class="px-4 py-2" data-label="กลุ่มสาระ">${escapeHtml(user.department)}</td>
-                    <td class="px-4 py-2" data-label="บทบาท">${escapeHtml(user.role)}</td>
-                    <td class="px-4 py-2" data-label="การจัดการ">
-                        <button onclick="deleteUser('${escapeHtml(user.username)}')" class="btn btn-danger btn-sm">ลบ</button>
-                    </td>
-                </tr>`).join('')}
-            </tbody>
-        </table>
-    </div>`;
+    if (!requests || requests.length === 0) {
+        container.innerHTML = `
+            <div class="text-center py-10 bg-gray-50 rounded-xl border border-dashed border-gray-300">
+                <div class="text-4xl mb-2">📭</div>
+                <p class="text-gray-500">ยังไม่มีรายการคำขอในปีงบประมาณนี้</p>
+                <button onclick="switchPage('form-page')" class="mt-4 btn btn-sm btn-primary">
+                    + สร้างคำขอใหม่
+                </button>
+            </div>`;
+        return;
+    }
+
+    container.innerHTML = requests.map(request => {
+        // --- 🟢 ส่วนที่แก้ไขใหม่: ตรวจสอบสถานะก่อนโชว์ไฟล์ ---
+        let fileActionHTML = '';
+        
+        // เช็คว่าจบกระบวนการหรือยัง? (อนุมัติเรียบร้อย / เสร็จสิ้น / finished)
+        const isFinished = request.status === 'อนุมัติเรียบร้อย' || 
+                           request.status === 'เสร็จสิ้น' || 
+                           request.currentRole === 'finished';
+
+        if (isFinished) {
+            // ✅ ถ้าจบแล้ว: แสดงปุ่มดาวน์โหลดไฟล์
+            fileActionHTML = `
+                <div class="flex flex-col gap-2 mt-2">
+                    <a href="${request.pdfUrl}" target="_blank" class="btn btn-success btn-sm w-full flex items-center justify-center gap-2 shadow-sm transform hover:scale-105 transition">
+                        📄 ดาวน์โหลดบันทึกข้อความ
+                    </a>
+                    ${request.dispatchBookPdfUrl ? `
+                    <a href="${request.dispatchBookPdfUrl}" target="_blank" class="btn bg-purple-600 text-white btn-sm w-full flex items-center justify-center gap-2 shadow-sm transform hover:scale-105 transition">
+                        📦 ดาวน์โหลดหนังสือส่ง
+                    </a>` : ''}
+                </div>
+            `;
+        } else {
+            // ⏳ ถ้ายังไม่จบ: แสดงสถานะรอ
+            fileActionHTML = `
+                <div class="mt-2 bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-center">
+                    <div class="text-yellow-800 font-bold text-sm flex items-center justify-center gap-1">
+                        <span class="animate-pulse">⏳</span> อยู่ระหว่างการพิจารณา
+                    </div>
+                    <div class="text-yellow-600 text-xs mt-1">
+                        สถานะปัจจุบัน: <span class="font-bold">${request.status || 'รอการดำเนินการ'}</span>
+                    </div>
+                    ${request.currentRole ? `<div class="text-gray-400 text-[10px] mt-1">(ขั้นตอน: ${request.currentRole})</div>` : ''}
+                </div>
+            `;
+        }
+        // -----------------------------------------------------
+
+        return `
+        <div class="border rounded-xl p-5 bg-white shadow-sm hover:shadow-md transition duration-200 mb-4 border-l-4 ${isFinished ? 'border-l-green-500' : 'border-l-yellow-400'}">
+            <div class="flex justify-between items-start flex-wrap gap-4">
+                
+                <div class="flex-1 min-w-[200px]">
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="bg-gray-100 text-gray-600 text-xs px-2 py-0.5 rounded font-mono">
+                            #${request.id}
+                        </span>
+                        <span class="text-xs font-bold ${request.expenseOption !== 'no' ? 'text-orange-600 bg-orange-50 px-2 py-0.5 rounded' : 'text-blue-600 bg-blue-50 px-2 py-0.5 rounded'}">
+                            ${request.expenseOption !== 'no' ? '🟠 เบิกค่าใช้จ่าย' : '🔵 ไม่เบิกเงิน'}
+                        </span>
+                    </div>
+                    
+                    <h4 class="font-bold text-lg text-gray-800 leading-tight mb-1">${request.purpose}</h4>
+                    <p class="text-sm text-gray-600 mb-2">📍 ${request.location}</p>
+                    
+                    <div class="flex items-center gap-3 text-xs text-gray-500">
+                        <div class="flex items-center gap-1">
+                            📅 <span>${formatDisplayDate(request.startDate)}</span>
+                            ${request.startDate !== request.endDate ? ` - ${formatDisplayDate(request.endDate)}` : ''}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="w-full sm:w-auto min-w-[180px] flex flex-col gap-2">
+                    ${fileActionHTML}
+                    
+                    ${!isFinished ? `
+                    <div class="flex gap-2 justify-end mt-1">
+                        <button data-action="edit" data-id="${request.id}" class="text-xs text-gray-400 hover:text-indigo-600 underline">แก้ไข</button>
+                        <button data-action="delete" data-id="${request.id}" class="text-xs text-gray-400 hover:text-red-600 underline">ลบ</button>
+                    </div>` : ''}
+                </div>
+
+            </div>
+        </div>`;
+    }).join('');
 }
 
 // [แก้ไข] แสดงรายการคำขอฝั่ง Admin พร้อมระบุสถานะการเบิกเงิน

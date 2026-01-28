@@ -913,123 +913,156 @@ function toggleVehicleDetails() {
 }
 
 // 1. ฟังก์ชันส่งคำขอไปราชการ (Travel Request)
+// ฟังก์ชันบันทึกคำขอและเริ่ม Workflow
 async function handleRequestFormSubmit(e) {
     e.preventDefault();
-    const user = getCurrentUser();
-    if (!user) return;
 
-    // ดึงข้อมูลพื้นฐาน
-    const expenseOption = document.querySelector('input[name="expense_option"]:checked').value;
-    
-    // ตรวจสอบลายเซ็นกรณีไม่เบิกเงิน
-    let signatureBase64 = null;
-    if (expenseOption === 'no') {
-        if (!signaturePad || signaturePad.isEmpty()) {
-            return showAlert('แจ้งเตือน', 'กรุณาลงลายชื่อในช่องสีเหลี่ยมด้านล่างก่อนบันทึก');
-        }
-        signatureBase64 = signaturePad.toDataURL(); // ดึงภาพลายเซ็น
+    // 1. ตรวจสอบการลงลายมือชื่อ (Validation)
+    if (!signaturePad || signaturePad.isEmpty()) {
+        return showAlert('แจ้งเตือน', 'กรุณาลงลายมือชื่ออิเล็กทรอนิกส์ก่อนบันทึก');
     }
 
-    const formData = {
-        username: user.username,
-        docDate: document.getElementById('form-doc-date').value,
-        requesterName: document.getElementById('form-requester-name').value,
-        requesterPosition: document.getElementById('form-requester-position').value,
-        location: document.getElementById('form-location').value,
-        purpose: document.getElementById('form-purpose').value,
-        startDate: document.getElementById('form-start-date').value,
-        endDate: document.getElementById('form-end-date').value,
-        attendees: Array.from(document.querySelectorAll('#form-attendees-list > div')).map(div => {
-            const select = div.querySelector('.attendee-position-select');
-            let pos = select.value === 'other' ? div.querySelector('.attendee-position-other').value : select.value;
-            return { name: div.querySelector('.attendee-name').value, position: pos };
-        }).filter(att => att.name),
-        expenseOption: expenseOption,
-        vehicleOption: document.querySelector('input[name="vehicle_option"]:checked')?.value || 'gov',
-        licensePlate: document.getElementById('form-license-plate').value,
-        department: document.getElementById('form-department').value,
-        headName: document.getElementById('form-head-name').value,
-        signatureBase64: signatureBase64, // ส่งลายเซ็นไปด้วย
-        role: 'requester' // ระบุตำแหน่งเพื่อพิกัด PDF
-    };
-
-    // แปลงข้อมูลตัวเลขเป็นเลขไทยก่อนสร้างเอกสาร
-    const formDataThai = JSON.parse(JSON.stringify(formData));
-    formDataThai.totalExpense = toThaiDigits(formDataThai.totalExpense);
-
+    // เปิด Loader ที่ปุ่ม
     toggleLoader('submit-request-button', true);
-    
+
     try {
-        let result = await apiCall('POST', 'createRequest', formData);
-        if (result.status === 'success') {
-            const { pdfBlob } = await generateOfficialPDF({...formDataThai, doctype: 'memo', id: result.data.id});
-            // --- [เพิ่มใหม่] ขั้นตอนการประทับลายเซ็นผู้ขอ (ถ้ามี) ---
-            let signedPdfBlob = pdfBlob; // เริ่มต้นใช้ไฟล์เดิม
-            
-            if (formData.signatureBase64 && formData.role === 'requester') {
-                console.log("✍️ กำลังประทับลายเซ็นผู้ขอลงในเอกสาร...");
-                try {
-                    // 1. แปลง PDF Blob เป็น Base64
-                    const pdfBase64 = await blobToBase64(pdfBlob);
-                    
-                    // 2. ส่งไปประทับตราที่ Cloud Run (Endpoint ที่เพิ่งแก้)
-                    const signResponse = await fetch(`${PDF_ENGINE_CONFIG.BASE_URL}pdf/sign`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            pdfBase64: pdfBase64,       // ส่งเนื้อไฟล์ไป
-                            signatureBase64: formData.signatureBase64, // ส่งลายเซ็นไป
-                            role: 'requester'           // บอกว่าเป็นผู้ขอ (เพื่อให้หา [SIG_REQ])
-                        })
-                    });
+        // 2. รวบรวมข้อมูลจากฟอร์ม (Gather Data)
+        // ----------------------------------------------------
+        const requestId = document.getElementById('form-request-id').value || `req_${Date.now()}`;
+        
+        // ดึงรายการผู้ร่วมเดินทาง
+        const attendees = [];
+        document.querySelectorAll('#form-attendees-list > div').forEach(div => {
+            attendees.push({
+                name: div.querySelector('.attendee-name').value,
+                position: div.querySelector('.attendee-position').value
+            });
+        });
 
-                    if (signResponse.ok) {
-                        signedPdfBlob = await signResponse.blob(); // อัปเดตเป็นไฟล์ที่มีลายเซ็นแล้ว
-                        console.log("✅ ประทับลายเซ็นเรียบร้อย");
-                    } else {
-                        console.warn("⚠️ การประทับลายเซ็นล้มเหลว (ใช้ไฟล์ต้นฉบับแทน)");
-                    }
-                } catch (signError) {
-                    console.error("Sign Error:", signError);
-                }
-            }
-            
-            // --- จบส่วนเพิ่มใหม่ ---
+        // ดึงรายการค่าใช้จ่าย (Checkbox)
+        const expenseItems = [];
+        document.querySelectorAll('input[name="expense_item"]:checked').forEach(cb => {
+            expenseItems.push(cb.value);
+        });
+        const expenseOtherText = document.getElementById('expense_other_text')?.value || '';
+        if (expenseOtherText) expenseItems.push(`อื่นๆ: ${expenseOtherText}`);
 
-            // **เปลี่ยน pdfBlob เป็น signedPdfBlob ในโค้ดด้านล่างนี้**
-            if (formData.expenseOption !== 'no') {
-                const upload = await apiCall('POST', 'uploadGeneratedFile', {
-                    data: await blobToBase64(signedPdfBlob), // <--- แก้ตรงนี้
-                    filename: `บันทึก_${result.data.id.replace(/\//g,'-')}.pdf`, 
-                    username: user.username
-                });
-            } else {
-                window.currentMainPDF = signedPdfBlob; // <--- แก้ตรงนี้
-                window.currentFormData = formData;
-                openAttachmentModal(result.data.id, formData);
-            }
-            if (formData.expenseOption !== 'no') {
-                const upload = await apiCall('POST', 'uploadGeneratedFile', {
-                    data: await blobToBase64(pdfBlob), 
-                    filename: `บันทึก_${result.data.id.replace(/\//g,'-')}.pdf`, 
-                    username: user.username
-                });
-                await db.collection('requests').doc(result.data.id.replace(/\//g,'-')).set({ 
-                    pdfUrl: upload.url, 
-                    status: 'รอแอดมินตรวจสอบ (1)' 
-                }, { merge: true });
-                window.open(upload.url, '_blank');
-                switchPage('dashboard-page');
-            } else {
-                window.currentMainPDF = pdfBlob;
-                window.currentFormData = formData;
-                openAttachmentModal(result.data.id, formData);
-            }
+        // สร้าง Object ข้อมูลสำหรับส่งไปสร้าง PDF และบันทึก Database
+        const formData = {
+            id: requestId,
+            docDate: document.getElementById('form-doc-date').value,
+            requesterName: document.getElementById('form-requester-name').value,
+            requesterPosition: document.getElementById('form-requester-position').value,
+            location: document.getElementById('form-location').value,
+            purpose: document.getElementById('form-purpose').value,
+            startDate: document.getElementById('form-start-date').value,
+            endDate: document.getElementById('form-end-date').value,
+            
+            department: document.getElementById('form-department').value,
+            headName: document.getElementById('form-head-name').value,
+            
+            attendees: attendees,
+            
+            expenseOption: document.querySelector('input[name="expense_option"]:checked')?.value || 'no',
+            expenseItems: expenseItems,
+            totalExpense: document.getElementById('form-total-expense')?.value || '0',
+            
+            vehicleOption: document.querySelector('input[name="vehicle_option"]:checked')?.value || 'public',
+            licensePlate: document.getElementById('form-license-plate')?.value || '',
+            publicVehicleDetails: document.getElementById('edit-public-vehicle-details')?.value || '',
+            
+            createdby: getCurrentUser().username // เก็บชื่อผู้สร้าง
+        };
+
+        // 3. เริ่มกระบวนการสร้างเอกสาร (PDF Generation)
+        // ----------------------------------------------------
+        console.log("🚀 Generating initial PDF...");
+        // เรียกใช้ Helper ใน admin.js เพื่อสร้างไฟล์จาก Template
+        const { pdfBlob } = await generateOfficialPDF({ ...formData, doctype: 'memo' });
+
+
+        // 4. 🔥 ประทับลายเซ็นผู้ขอทันที (Immediate Signing)
+        // ----------------------------------------------------
+        console.log("✍️ Stamping Requester Signature...");
+        const signatureBase64 = signaturePad.toDataURL('image/png');
+        let signedPdfBlob = pdfBlob; // เริ่มต้นใช้ไฟล์ดิบ
+
+        // ส่งไปประทับตราที่ Cloud Run (/pdf/sign)
+        const signResponse = await fetch(`${PDF_ENGINE_CONFIG.BASE_URL}pdf/sign`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                pdfBase64: await blobToBase64(pdfBlob), // ส่งไฟล์ PDF ที่เพิ่งสร้าง
+                signatureBase64: signatureBase64,       // ลายเซ็นจาก Canvas
+                role: 'requester'                       // ระบุ Role เพื่อให้วางทับ [SIG_REQ]
+            })
+        });
+
+        if (signResponse.ok) {
+            signedPdfBlob = await signResponse.blob(); // อัปเดตเป็นไฟล์ที่มีลายเซ็นแล้ว
+            console.log("✅ Requester signature stamped.");
+        } else {
+            console.warn("⚠️ Failed to stamp signature, proceeding with unsigned file.");
         }
-    } catch (error) { 
-        showAlert('ผิดพลาด', error.message); 
-    } finally { 
-        toggleLoader('submit-request-button', false); 
+
+
+        // 5. อัปโหลดไฟล์เข้าสู่ระบบ (Hidden Upload)
+        // ----------------------------------------------------
+        console.log("☁️ Uploading file to storage...");
+        const pdfBase64 = await blobToBase64(signedPdfBlob);
+        
+        const uploadResult = await apiCall('POST', 'uploadGeneratedFile', {
+            data: pdfBase64,
+            filename: `บันทึก_${formData.requesterName}_${Date.now()}.pdf`,
+            mimeType: 'application/pdf',
+            username: getCurrentUser().username
+        });
+
+        if (uploadResult.status !== 'success') {
+            throw new Error('การอัปโหลดไฟล์ล้มเหลว: ' + uploadResult.message);
+        }
+
+
+        // 6. บันทึกข้อมูลลง Firestore และเริ่ม Workflow
+        // ----------------------------------------------------
+        const safeId = requestId.replace(/[\/\\:\.]/g, '-');
+        
+        await db.collection('requests').doc(safeId).set({
+            ...formData,
+            pdfUrl: uploadResult.url,      // เก็บ URL ไฟล์ (แต่หน้า Dashboard จะยังไม่ให้โหลด ถ้าสถานะไม่จบ)
+            status: 'รอหัวหน้ากลุ่มสาระพิจารณา', // สถานะเริ่มต้น
+            currentRole: 'head',           // ส่งไม้ต่อให้หัวหน้า
+            timestamp: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+
+
+        // 7. 🚀 ส่งแจ้งเตือน LINE หาหัวหน้ากลุ่มสาระ
+        // ----------------------------------------------------
+        // สร้างลิงก์สำหรับหัวหน้า (เพื่อให้กดแล้วเด้งหน้าเซ็นชื่อทันที)
+        const approvalLink = `${window.location.origin}?action=sign&id=${requestId}&role=head`;
+        
+        await sendLineNotification(
+            approvalLink, 
+            `📢 คำขอใหม่: ${formData.requesterName}\nเรื่อง: ${formData.purpose}\nสถานะ: รอหัวหน้ากลุ่มสาระพิจารณา`, 
+            'HEAD' // ส่งเข้ากลุ่มหัวหน้า
+        );
+
+
+        // 8. จบกระบวนการ (Reset & Redirect)
+        // ----------------------------------------------------
+        showAlert('สำเร็จ', 'บันทึกคำขอและส่งเรื่องให้หัวหน้ากลุ่มสาระเรียบร้อยแล้ว\n(เอกสารจะแสดงเมื่อได้รับการอนุมัติครบถ้วน)');
+        
+        document.getElementById('request-form').reset();
+        if (signaturePad) signaturePad.clear();
+        
+        // กลับหน้าแดชบอร์ดทันที
+        switchPage('dashboard-page');
+
+    } catch (error) {
+        console.error("Submission Error:", error);
+        showAlert('ผิดพลาด', 'เกิดข้อผิดพลาด: ' + error.message);
+    } finally {
+        toggleLoader('submit-request-button', false);
     }
 }
 
