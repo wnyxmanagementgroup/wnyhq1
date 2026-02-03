@@ -1,95 +1,111 @@
-// --- เพิ่มในไฟล์ js/firebaseService.js ---
-
 /**
- * [ใหม่] สร้างคำสั่ง (Command) แบบ Hybrid
- * 1. บันทึกสถานะลง Firebase ก่อน (เพื่อให้ UI ตอบสนองไว)
- * 2. เรียก GAS เพื่อสร้างไฟล์ Google Doc และ PDF
- * 3. อัปเดตลิงก์กลับมาที่ Firebase
+ * ฟังก์ชันหลักในการส่งคำขอไปราชการ (Hybrid Mode)
  */
-async function generateCommandHybrid(data) {
-    if (typeof db === 'undefined' || !db || !USE_FIREBASE) throw new Error("Firebase not initialized");
-
+async function submitRequestWithHybrid(formData) {
+    const tempId = Date.now().toString(); // ID ชั่วคราวก่อนได้เลข บค. จาก GAS
+    
     try {
-        console.log("🚀 Starting Command Generation (Hybrid)...");
-        const docId = data.id.replace(/\//g, '-'); // แปลง ID ให้ปลอดภัยสำหรับ Firestore Document
+        // --- 1. พยายามสร้าง PDF ผ่าน Cloud Run ก่อน ---
+        let preGeneratedUrl = null;
+        try {
+            console.log("🚀 Attempting Cloud Run PDF Generation...");
+            // สมมติใช้ template_memo.docx สำหรับบันทึกข้อความ
+            const pdfBlob = await generatePdfFromCloudRun('template_memo.docx', formData);
+            
+            // อัปโหลดไฟล์ที่ได้ไปยัง Storage ทันที
+            const fileName = `memo_pending_${tempId}.pdf`;
+            preGeneratedUrl = await uploadToStorage(pdfBlob, `requests/temp/${fileName}`);
+            console.log("✅ Cloud Run Success! File URL:", preGeneratedUrl);
+        } catch (e) {
+            console.warn("⚠️ Cloud Run Failed, will fallback to GAS generation:", e.message);
+            // ถ้าตรงนี้พัง preGeneratedUrl จะเป็น null ซึ่งจะไปเปิด Trigger ให้ GAS สร้างเองใน Step ถัดไป
+        }
 
-        // 1. บันทึกลง Firebase ก่อน (Status: กำลังสร้าง...)
-        const updatePayload = {
-            commandStatus: 'กำลังดำเนินการสร้าง...',
-            lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+        // --- 2. ส่งข้อมูลไปที่ GAS เพื่อบันทึกเลขที่ (ID) และลง Google Sheet ---
+        // ส่ง preGeneratedUrl ไปด้วย ถ้ามีค่า GAS จะไม่สร้างไฟล์ซ้ำ
+        const payload = {
+            ...formData,
+            preGeneratedPdfUrl: preGeneratedUrl, 
+            action: 'saveRequestAndGeneratePdf'
         };
+
+        const result = await apiCall('POST', 'saveRequestAndGeneratePdf', payload);
         
-        await db.collection('requests').doc(docId).set(updatePayload, { merge: true });
-        console.log("✅ Firebase status updated: Generating...");
+        if (result.status === 'success') {
+            const finalId = result.data.id;
+            const docId = finalId.replace(/[\/\\\:\.]/g, '-');
 
-        // 2. ส่งงานให้ Google Apps Script (GAS)
-        // ต้องมั่นใจว่า GAS ของคุณมีฟังก์ชัน 'generateCommand' ที่คืนค่า { docUrl, pdfUrl }
-        const gasResult = await apiCall('POST', 'generateCommand', data);
+            // --- 3. บันทึกข้อมูลลง Firestore (เพื่อให้หน้าเว็บเห็นปุ่มดาวน์โหลดทันที) ---
+            await db.collection('requests').doc(docId).set({
+                ...formData,
+                id: finalId,
+                pdfUrl: result.data.pdfUrl, // นี่คือ URL จาก Cloud Run หรือ GAS (Fallback)
+                docUrl: result.data.docUrl,
+                status: 'กำลังดำเนินการ',
+                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
 
-        if (gasResult.status === 'success') {
-            // 3. เมื่อ GAS ทำเสร็จ ให้บันทึก Link ทั้ง 2 แบบลง Firebase
-            const finalUpdate = {
-                commandStatus: 'เสร็จสิ้น',
-                commandDocUrl: gasResult.data.docUrl || '', // ลิงก์ Google Doc (สำหรับแก้ไข)
-                commandPdfUrl: gasResult.data.pdfUrl || ''  // ลิงก์ PDF (สำหรับใช้งาน)
-            };
-            
-            await db.collection('requests').doc(docId).set(finalUpdate, { merge: true });
-            
-            return { status: 'success', data: { ...gasResult.data } };
+            return result;
         } else {
-            throw new Error(gasResult.message || "GAS Error");
+            throw new Error(result.message || "GAS บันทึกข้อมูลไม่สำเร็จ");
         }
 
     } catch (error) {
-        console.error("🔥 Command Generation Error:", error);
-        // แจ้ง Error ลง Firebase
-        const docId = data.id.replace(/\//g, '-');
-        await db.collection('requests').doc(docId).set({ 
-            commandStatus: 'เกิดข้อผิดพลาด',
-            note: error.message 
-        }, { merge: true });
-        
+        console.error("🔥 Submission process failed:", error);
         throw error;
     }
 }
 
 /**
- * [ใหม่] สร้างหนังสือส่ง (Dispatch) แบบ Hybrid
- * ทำงานลักษณะเดียวกับ Command
+ * ปรับปรุงการสร้างคำสั่ง (Command) ให้เป็นแบบ Serial Success
  */
-async function generateDispatchHybrid(data) {
-    if (typeof db === 'undefined' || !db || !USE_FIREBASE) throw new Error("Firebase not initialized");
-
+async function generateCommandHybrid(data) {
+    const docId = data.id.replace(/[\/\\\:\.]/g, '-');
+    
     try {
-        console.log("🚀 Starting Dispatch Generation (Hybrid)...");
-        const docId = data.id.replace(/\//g, '-');
+        // 1. ลอง Cloud Run ก่อน
+        let cloudRunUrl = null;
+        try {
+            let templateName = PDF_ENGINE_CONFIG.TEMPLATES.COMMAND_SOLO;
+            if (data.attendees && data.attendees.length > 0) {
+                templateName = data.attendees.length <= 15 
+                    ? PDF_ENGINE_CONFIG.TEMPLATES.COMMAND_SMALL 
+                    : PDF_ENGINE_CONFIG.TEMPLATES.COMMAND_LARGE;
+            }
 
-        // 1. Update Firebase
-        await db.collection('requests').doc(docId).set({
-            dispatchStatus: 'กำลังดำเนินการสร้าง...',
-            lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
-
-        // 2. Call GAS
-        const gasResult = await apiCall('POST', 'generateDispatch', data);
-
-        if (gasResult.status === 'success') {
-            // 3. Save Links (Doc + PDF)
-            await db.collection('requests').doc(docId).set({
-                dispatchStatus: 'เสร็จสิ้น',
-                dispatchDocUrl: gasResult.data.docUrl || '',
-                dispatchBookUrl: gasResult.data.pdfUrl || '', // ใช้ชื่อ dispatchBookUrl ตาม Schema เดิม
-                dispatchBookDocUrl: gasResult.data.docUrl || '' // เก็บลิงก์ Doc แยกไว้ด้วย
-            }, { merge: true });
-            
-            return { status: 'success', data: gasResult.data };
-        } else {
-            throw new Error(gasResult.message);
+            const finalPdfBlob = await generatePdfFromCloudRun(templateName, data);
+            const filename = `command_${docId}_${Date.now()}.pdf`;
+            cloudRunUrl = await uploadToStorage(finalPdfBlob, `generated_docs/${docId}/${filename}`);
+        } catch (e) {
+            console.warn("Cloud Run Command failed, letting GAS handle it.");
         }
 
+        // 2. เรียก GAS: ส่ง cloudRunUrl ไปด้วย 
+        // ถ้า cloudRunUrl มีค่า GAS จะข้ามขั้นตอนสร้าง PDF และบันทึก URL นี้ลง Sheet เลย
+        const gasPayload = {
+            ...data,
+            preGeneratedPdfUrl: cloudRunUrl,
+            action: 'generateCommand'
+        };
+
+        const gasResult = await apiCall('POST', 'generateCommand', gasPayload);
+
+        // 3. บันทึกผลลัพธ์ลง Firestore หลังทุกอย่างใน GAS เสร็จสิ้น
+        const updateData = {
+            commandStatus: 'เสร็จสิ้น',
+            commandBookUrl: gasResult.data.pdfUrl, // ใช้ URL จาก GAS (ซึ่งอาจจะรับมาจาก Cloud Run อีกที)
+            commandDocUrl: gasResult.data.docUrl || '',
+            lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+        };
+
+        await db.collection('requests').doc(docId).set(updateData, { merge: true });
+        return { status: 'success', data: updateData };
+
     } catch (error) {
-        console.error("🔥 Dispatch Generation Error:", error);
+        await db.collection('requests').doc(docId).set({
+            commandStatus: 'เกิดข้อผิดพลาด',
+            errorLog: error.message
+        }, { merge: true });
         throw error;
     }
 }
