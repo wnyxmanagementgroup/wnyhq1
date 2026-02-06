@@ -1,5 +1,4 @@
 // --- REQUEST FUNCTIONS (HYBRID SYSTEM: Firebase + GAS) ---
-// --- รายชื่อ 77 จังหวัด (เรียงตามตัวอักษร) ---
 // --- ส่วนที่เพิ่มใหม่: รายชื่อจังหวัดและ Logic ตรวจสอบเงื่อนไข ---
 
 // --- ส่วนที่เพิ่มใหม่: รายชื่อจังหวัดและ Logic ตรวจสอบเงื่อนไข (ยานพาหนะ + ที่พัก) ---
@@ -108,7 +107,6 @@ function setupFormConditions() {
         checkConditions(); // เรียกครั้งแรก
     }
 }
-
 // จัดการปุ่ม Action ต่างๆ (แก้ไข, ลบ, ส่งบันทึก)
 async function handleRequestAction(e) {
     const button = e.target.closest('button[data-action]');
@@ -193,99 +191,214 @@ async function handleDeleteRequest(requestId) {
         showAlert('ผิดพลาด', 'เกิดข้อผิดพลาดในการลบคำขอ: ' + error.message);
     }
 }
-
-
-
-// ✅ [แก้ไข] ดึงข้อมูลและกรองเฉพาะของฉัน (สำหรับ Dashboard)
-// --- แก้ไขใน js/requests.js ---
-
+// ==========================================
+// 1. ฟังก์ชันดึงข้อมูล (Fetch Data) - แก้ไขให้ Hybrid (GAS + Firebase)
+// ==========================================
 async function fetchUserRequests() {
+    const user = getCurrentUser();
+    if (!user) return;
+
+    // UI: แสดง Loader
+    const container = document.getElementById('user-requests-list');
+    const noMsg = document.getElementById('no-requests-message');
+    
+    if (container) {
+        container.classList.remove('hidden');
+        container.innerHTML = '<div class="text-center py-10"><span class="loader"></span> กำลังโหลดข้อมูลล่าสุด...</div>';
+    }
+    if (noMsg) noMsg.classList.add('hidden');
+
+    const yearSelect = document.getElementById('user-year-select');
+    const currentYear = new Date().getFullYear() + 543;
+    const selectedYear = yearSelect ? parseInt(yearSelect.value) : currentYear;
+
     try {
-        const user = getCurrentUser();
-        if (!user) return;
+        // 1. ดึงข้อมูลหลักจาก Google Sheets (GAS)
+        const result = await apiCall('GET', 'getRequestsByYear', { 
+            year: selectedYear, 
+            username: user.username 
+        });
 
-        // 1. ตรวจสอบปีที่เลือก
-        const yearSelect = document.getElementById('user-year-select');
-        const selectedYear = yearSelect ? parseInt(yearSelect.value) : (new Date().getFullYear() + 543);
-        const currentYear = new Date().getFullYear() + 543;
-        
-        const isHistoryMode = selectedYear !== currentYear; // เช็คว่าเป็นโหมดดูย้อนหลังหรือไม่
+        let requests = (result.status === 'success') ? result.data || [] : [];
 
-        document.getElementById('requests-loader').classList.remove('hidden');
-        document.getElementById('requests-list').classList.add('hidden');
-        document.getElementById('no-requests-message').classList.add('hidden');
+        // 2. ★★★ (สำคัญ) ดึงข้อมูลจาก Firebase มาทับ เพื่อให้ได้ลิงก์ Cloud Run ล่าสุด ★★★
+        if (typeof db !== 'undefined') {
+            try {
+                // ดึงเฉพาะของ User นี้
+                const snapshot = await db.collection('requests')
+                    .where('username', '==', user.username)
+                    .get();
+                
+                const firebaseData = {};
+                snapshot.forEach(doc => { firebaseData[doc.id] = doc.data(); });
 
-        let requestsData = [];
-        let memosData = [];
-
-        // 2. Logic การดึงข้อมูลแยกตามโหมด
-        if (isHistoryMode) {
-            console.log(`📜 Fetching HISTORY data for year ${selectedYear} directly from GAS...`);
-            
-            // ★ ยิงตรงไป GAS (ไม่ผ่าน Firebase)
-            const res = await apiCall('GET', 'getRequestsByYear', { 
-                year: selectedYear, 
-                username: user.username 
-            });
-            
-            if (res.status === 'success') requestsData = res.data;
-            
-            // (Optional) อาจต้องดึง Memo ของปีนั้นด้วย ถ้า API แยกกัน
-            // const memoRes = await apiCall('GET', 'getMemosByYear', { ... });
-
-        } else {
-            // ★ โหมดปกติ (ปีปัจจุบัน) ใช้ Hybrid/Firebase เหมือนเดิม
-            if (typeof fetchRequestsHybrid === 'function' && typeof USE_FIREBASE !== 'undefined' && USE_FIREBASE) {
-                const firebaseResult = await fetchRequestsHybrid(user);
-                if (firebaseResult !== null) {
-                    requestsData = firebaseResult;
-                } else {
-                    const res = await apiCall('GET', 'getUserRequests', { username: user.username });
-                    if (res.status === 'success') requestsData = res.data;
-                }
-            } else {
-                const res = await apiCall('GET', 'getUserRequests', { username: user.username });
-                if (res.status === 'success') requestsData = res.data;
+                requests = requests.map(req => {
+                    // แปลง ID ให้ตรงกับ Key ใน Firebase (เช่น บค/ -> บค-)
+                    const safeId = req.id.replace(/[\/\\:\.]/g, '-');
+                    const fbDoc = firebaseData[safeId];
+                    
+                    if (fbDoc) {
+                        return {
+                            ...req,
+                            // เอาลิงก์ fileUrl (Cloud Run) จาก Firebase มาใช้ก่อน
+                            fileUrl: fbDoc.fileUrl || req.fileUrl,
+                            pdfUrl: fbDoc.pdfUrl || req.pdfUrl,
+                            
+                            // เอาลิงก์อื่นๆ และสถานะล่าสุดมาด้วย
+                            completedMemoUrl: fbDoc.completedMemoUrl || req.completedMemoUrl,
+                            commandPdfUrl: fbDoc.commandPdfUrl || fbDoc.commandBookUrl || req.commandPdfUrl,
+                            dispatchBookUrl: fbDoc.dispatchBookUrl || fbDoc.dispatchBookPdfUrl || req.dispatchBookUrl,
+                            status: fbDoc.status || req.status,
+                            commandStatus: fbDoc.commandStatus || req.commandStatus
+                        };
+                    }
+                    return req;
+                });
+            } catch (e) {
+                console.warn("Firebase Sync Error (User):", e);
             }
-            
-            // ดึง Memo ปัจจุบัน
-            const memosResult = await apiCall('GET', 'getSentMemos', { username: user.username });
-            if (memosResult.status === 'success') memosData = memosResult.data || [];
         }
 
-        // 3. กรองและเรียงลำดับ
-        if (requestsData && requestsData.length > 0) {
-            // ถ้าเป็น GAS (History) อาจจะกรองมาให้แล้ว แต่กรองซ้ำเพื่อความชัวร์
-            requestsData = requestsData.filter(req => req.username === user.username);
-            
-            requestsData.sort((a, b) => {
-                const dateA = new Date(a.timestamp || a.docDate || 0).getTime();
-                const dateB = new Date(b.timestamp || b.docDate || 0).getTime();
-                return dateB - dateA;
+        // 3. เรียงลำดับ (ใหม่ -> เก่า)
+        if (requests.length > 0) {
+            requests.sort((a, b) => {
+                const getTime = (d) => d ? new Date(d).getTime() : 0;
+                return getTime(b.docDate) - getTime(a.docDate);
             });
         }
 
         // 4. แสดงผล
-        allRequestsCache = requestsData;
-        userMemosCache = memosData;
-        renderRequestsList(allRequestsCache, userMemosCache);
-        
-        // ถ้าเป็นโหมดประวัติ อาจปิดการแจ้งเตือนหรือปุ่มแก้ไขบางอย่าง
-        if (!isHistoryMode) {
-            updateNotifications(allRequestsCache, userMemosCache);
-        }
+        renderUserRequests(requests);
 
     } catch (error) {
         console.error('Error fetching requests:', error);
-        showAlert('ผิดพลาด', 'ไม่สามารถโหลดข้อมูลได้');
-    } finally {
-        document.getElementById('requests-loader').classList.add('hidden');
+        if (container) {
+            container.innerHTML = `<p class="text-center text-red-500 py-10">โหลดข้อมูลไม่สำเร็จ: ${error.message}</p>`;
+        }
     }
 }
 
+// ==========================================
+// 2. ฟังก์ชันแสดงผล (Render UI) - ปรับลำดับการเลือกไฟล์
+// ==========================================
+function renderUserRequests(requests) {
+    const container = document.getElementById('user-requests-list');
+    const noMsg = document.getElementById('no-requests-message');
+    
+    if (!container) return;
+
+    if (!requests || requests.length === 0) {
+        container.innerHTML = ''; 
+        container.classList.add('hidden');
+        if (noMsg) {
+            noMsg.classList.remove('hidden');
+            noMsg.innerHTML = `
+                <div class="text-center py-10">
+                    <p class="text-gray-400 text-lg">ไม่พบประวัติการขอไปราชการในปีนี้</p>
+                    <button onclick="switchPage('form-page')" class="mt-3 btn bg-indigo-500 hover:bg-indigo-600 text-white btn-sm">
+                        + สร้างคำขอใหม่
+                    </button>
+                </div>
+            `;
+        }
+        return;
+    }
+
+    // Helper format วันที่
+    const formatDate = (date) => {
+        if (!date) return '-';
+        const d = new Date(date);
+        return isNaN(d.getTime()) ? date : d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
+    };
+
+    container.classList.remove('hidden');
+    if (noMsg) noMsg.classList.add('hidden');
+
+    container.innerHTML = requests.map(req => {
+        const safeId = escapeHtml(req.id || 'รอเลขที่');
+        
+        // Badge สถานะ
+        let statusBadge = `<span class="px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-600">รอตรวจสอบ</span>`;
+        if (req.commandStatus === 'เสร็จสิ้น' || req.commandPdfUrl) {
+            statusBadge = `<span class="px-2 py-1 rounded-full text-xs bg-green-100 text-green-700">✅ อนุมัติ/ออกคำสั่งแล้ว</span>`;
+        } else if (req.status === 'ไม่อนุมัติ') {
+            statusBadge = `<span class="px-2 py-1 rounded-full text-xs bg-red-100 text-red-700">❌ ไม่อนุมัติ</span>`;
+        } else if (req.status === 'Pending') {
+            statusBadge = `<span class="px-2 py-1 rounded-full text-xs bg-yellow-100 text-yellow-700">⏳ รอตรวจสอบ</span>`;
+        } else if (req.status === 'นำกลับไปแก้ไข') {
+            statusBadge = `<span class="px-2 py-1 rounded-full text-xs bg-red-100 text-red-700">⚠️ ต้องแก้ไข</span>`;
+        }
+
+        // ปุ่ม Action
+        let actionButtons = '';
+
+        // ★★★ (สำคัญ) เลือก fileUrl (Cloud Run) เป็นอันดับแรก ★★★
+        // เรียงลำดับ: ไฟล์สมบูรณ์ > ไฟล์ Cloud Run > ไฟล์ GAS
+        const finalPdfUrl = req.completedMemoUrl || req.fileUrl || req.pdfUrl;
+
+        // 1. บันทึกข้อความ
+        if (finalPdfUrl) {
+            actionButtons += `
+                <a href="${finalPdfUrl}" target="_blank" class="btn bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200 btn-sm flex items-center gap-1 shadow-sm">
+                    📄 บันทึกข้อความ
+                </a>`;
+        }
+
+        // 2. คำสั่ง
+        const finalCommandUrl = req.completedCommandUrl || req.commandPdfUrl;
+        if (finalCommandUrl) {
+            actionButtons += `
+                <a href="${finalCommandUrl}" target="_blank" class="btn bg-green-50 text-green-600 hover:bg-green-100 border border-green-200 btn-sm flex items-center gap-1 shadow-sm">
+                    📋 คำสั่ง
+                </a>`;
+        }
+
+        // 3. หนังสือส่ง
+        const dispatchUrl = req.dispatchBookUrl || req.dispatchBookPdfUrl;
+        if (dispatchUrl) {
+            actionButtons += `
+                <a href="${dispatchUrl}" target="_blank" class="btn bg-purple-50 text-purple-600 hover:bg-purple-100 border border-purple-200 btn-sm flex items-center gap-1 shadow-sm">
+                    📦 หนังสือส่ง
+                </a>`;
+        }
+
+        // เงื่อนไขปุ่มแก้ไข (ถ้ายังไม่ออกคำสั่ง หรือโดนส่งคืน)
+        const canEdit = (!req.commandPdfUrl && !req.commandStatus) || req.status === 'นำกลับไปแก้ไข';
+
+        return `
+        <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition duration-200 mb-4">
+            <div class="flex flex-col md:flex-row justify-between gap-4">
+                <div class="flex-1">
+                    <div class="flex items-center gap-3 mb-2">
+                        <h4 class="font-bold text-indigo-700 text-lg">${safeId}</h4>
+                        ${statusBadge}
+                    </div>
+                    <div class="space-y-1 text-sm text-gray-600">
+                        <p><strong>เรื่อง:</strong> ${escapeHtml(req.purpose)}</p>
+                        <p><strong>สถานที่:</strong> ${escapeHtml(req.location)}</p>
+                        <p><strong>วันที่:</strong> ${formatDate(req.startDate)} - ${formatDate(req.endDate)}</p>
+                    </div>
+                </div>
+                
+                <div class="flex flex-col items-end gap-2 min-w-[160px]">
+                    <div class="flex flex-wrap justify-end gap-2 w-full">
+                        ${actionButtons}
+                    </div>
+                    ${canEdit ? `
+                        <div class="flex gap-2 mt-2 pt-2 border-t border-gray-100 w-full justify-end">
+                            <button onclick="editRequest('${safeId}')" class="text-xs text-indigo-500 hover:text-indigo-700 underline flex items-center gap-1">✏️ แก้ไข</button>
+                            <button onclick="deleteRequest('${safeId}')" class="text-xs text-red-500 hover:text-red-700 underline flex items-center gap-1">🗑️ ยกเลิก</button>
+                        </div>` : ''
+                    }
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+}
 // ... (ส่วนล่าง renderRequestsList และอื่นๆ คงเดิม) ...
 
-// แสดงรายการคำขอ (Render UI)
+// ไฟล์ js/requests.js
+
 function renderRequestsList(requests, memos, searchTerm = '') {
     const container = document.getElementById('requests-list');
     const noRequestsMessage = document.getElementById('no-requests-message');
@@ -319,30 +432,27 @@ function renderRequestsList(requests, memos, searchTerm = '') {
         let displayRequestStatus = request.status;
         let displayCommandStatus = request.commandStatus;
         
-        // ถ้ามี Memo ให้ใช้สถานะจาก Memo แทน (ในกรณีที่ยังไม่ได้ Sync)
         if (relatedMemo) {
             displayRequestStatus = relatedMemo.status;
             displayCommandStatus = relatedMemo.status === 'เสร็จสิ้น/รับไฟล์ไปใช้งาน' ? 'เสร็จสิ้น' : relatedMemo.status;
         }
         
-        // ตรวจสอบไฟล์ที่เสร็จสมบูรณ์ (Priority: จาก Memo -> จาก Request เอง)
-        //const completedMemoUrl = relatedMemo?.completedMemoUrl || request.completedMemoUrl;
-        //const completedCommandUrl = relatedMemo?.completedCommandUrl || request.completedCommandUrl;
-        //const dispatchBookUrl = relatedMemo?.dispatchBookUrl || request.dispatchBookUrl;
+        // ลิงก์ไฟล์ต่างๆ
         const completedMemoUrl = relatedMemo?.completedMemoUrl || request.completedMemoUrl || request.memoPdfUrl || request.fileUrl;
-const completedCommandUrl = relatedMemo?.completedCommandUrl || request.completedCommandUrl || request.commandBookUrl; // เพิ่ม commandBookUrl เผื่อไว้
-const dispatchBookUrl = relatedMemo?.dispatchBookUrl || request.dispatchBookUrl;
+        const completedCommandUrl = relatedMemo?.completedCommandUrl || request.completedCommandUrl || request.commandBookUrl;
+        const dispatchBookUrl = relatedMemo?.dispatchBookUrl || request.dispatchBookUrl || request.dispatchBookPdfUrl;
 
         const hasCompletedFiles = completedMemoUrl || completedCommandUrl || dispatchBookUrl;
-        
         const isFullyCompleted = displayRequestStatus === 'เสร็จสิ้น/รับไฟล์ไปใช้งาน' || displayRequestStatus === 'เสร็จสิ้น';
         
-        // Sanitization (ป้องกัน XSS)
         const safeId = escapeHtml(request.id || request.requestId || 'รอออกเลข');
         const safePurpose = escapeHtml(request.purpose || 'ไม่มีวัตถุประสงค์');
         const safeLocation = escapeHtml(request.location || 'ไม่ระบุ');
         const safeDate = `${formatDisplayDate(request.startDate)} - ${formatDisplayDate(request.endDate)}`;
         
+        // ★★★ แก้ไขจุดนี้: เลือกไฟล์คำขอ (Cloud Run) ก่อนไฟล์ GAS ★★★
+        const requestDocUrl = request.fileUrl || request.memoPdfUrl || request.pdfUrl;
+
         return `
             <div class="border rounded-lg p-4 mb-4 bg-white shadow-sm ${isFullyCompleted ? 'border-green-300 bg-green-50' : ''} hover:shadow-md transition-all">
                 <div class="flex justify-between items-start">
@@ -399,11 +509,11 @@ const dispatchBookUrl = relatedMemo?.dispatchBookUrl || request.dispatchBookUrl;
                     </div>
                     
                     <div class="flex flex-col gap-2 ml-4 min-w-[100px]">
-                        ${(request.pdfUrl || request.fileUrl) ? `
-    <a href="${request.pdfUrl || request.fileUrl}" target="_blank" class="btn btn-success btn-sm w-full text-center">
-        📄 ดูคำขอ
-    </a>
-` : ''}
+                        ${requestDocUrl ? `
+                            <a href="${requestDocUrl}" target="_blank" class="btn btn-success btn-sm w-full text-center">
+                                📄 ดูคำขอ
+                            </a>
+                        ` : ''}
                         
                         ${!isFullyCompleted ? `
                             <button data-action="edit" data-id="${request.id || request.requestId}" class="btn bg-blue-500 hover:bg-blue-600 text-white btn-sm w-full">
@@ -1122,7 +1232,7 @@ function toggleVehicleDetails() {
  * ฟังก์ชันดึงข้อมูลจากฟอร์มบันทึกข้อความ (Matching index.html IDs)
  */
 function getRequestFormData() {
-    // 1. ดึงรายชื่อผู้ร่วมเดินทาง
+    // 1. ดึงรายชื่อผู้ร่วมเดินทางจากรายการที่เพิ่ม
     const attendees = [];
     document.querySelectorAll('#form-attendees-list > div').forEach(div => {
         const nameInput = div.querySelector('.attendee-name');
@@ -1134,6 +1244,7 @@ function getRequestFormData() {
             if (position === 'other' && otherInput) {
                 position = otherInput.value.trim();
             }
+            // เพิ่มเฉพาะคนที่มีทั้งชื่อและตำแหน่ง
             if (nameInput.value.trim()) {
                 attendees.push({ name: nameInput.value.trim(), position: position });
             }
@@ -1143,9 +1254,11 @@ function getRequestFormData() {
     // 2. จัดการข้อมูลค่าใช้จ่าย
     const expenseOption = document.querySelector('input[name="expense_option"]:checked')?.value || 'no';
     let expenseItems = [];
+    
     if (expenseOption === 'partial') {
         document.querySelectorAll('input[name="expense_item"]:checked').forEach(cb => {
             let item = { name: cb.getAttribute('data-item-name') || cb.value };
+            // กรณีเลือก "ค่าใช้จ่ายอื่นๆ" ให้ดึงรายละเอียด text box มาด้วย
             if (item.name === 'ค่าใช้จ่ายอื่นๆ') {
                 const otherText = document.getElementById('expense_other_text')?.value.trim();
                 item.detail = otherText;
@@ -1154,53 +1267,55 @@ function getRequestFormData() {
         });
     }
 
-    // 3. จัดการข้อมูลพาหนะ (Checkbox เดิม - สำหรับคำสั่ง)
+    // 3. จัดการข้อมูลพาหนะ (เลือกได้หลายตัว แต่ในโค้ดเดิมรองรับตัวเดียว ให้เอาตัวแรกที่เลือก หรือ logic ตามต้องการ)
+    // หมายเหตุ: ใน HTML เป็น checkbox name="vehicle_option" อาจเลือกได้หลายตัว แต่ API มักรับค่าเดียว
+    // ปรับให้ดึงตัวล่าสุดหรือตัวที่ check
     const vehicleChecked = document.querySelector('input[name="vehicle_option"]:checked');
     const vehicleOption = vehicleChecked ? vehicleChecked.value : 'gov';
-
-    // 4. จัดการจังหวัด (เพื่อตรวจสอบเงื่อนไข)
+    // --- ส่วนที่เพิ่ม: จัดการจังหวัด ---
     let province = document.getElementById('form-province')?.value || 'สระแก้ว';
     if (province === 'other') {
         province = document.getElementById('form-province-other')?.value.trim() || 'อื่นๆ';
     }
 
-    // 5. รวบรวมข้อมูลทั้งหมดส่งกลับ
+    // 4. รวบรวมข้อมูลทั้งหมดเป็น Object
     return {
-        // --- ข้อมูลเอกสาร ---
         docDate: document.getElementById('form-doc-date')?.value || '',
         requesterName: document.getElementById('form-requester-name')?.value.trim(),
         requesterPosition: document.getElementById('form-requester-position')?.value.trim(),
-        department: document.getElementById('form-department')?.value,
-        headName: document.getElementById('form-head-name')?.value,
-        
-        // --- รายละเอียดการเดินทาง ---
         location: document.getElementById('form-location')?.value.trim(),
+       // เพิ่มฟิลด์จังหวัดและที่พัก
+        province: document.getElementById('form-province')?.value,
+        stayAt: document.getElementById('form-stay-at')?.value.trim(),
+        // ข้อมูลยานพาหนะ (สำหรับหนังสือส่ง) - เพิ่มใหม่
+        dispatchVehicleType: document.getElementById('form-dispatch-vehicle-type')?.value.trim(),
+        dispatchVehicleId: document.getElementById('form-dispatch-vehicle-id')?.value.trim(),
+
         purpose: document.getElementById('form-purpose')?.value.trim(),
-        province: province,
-        
         startDate: document.getElementById('form-start-date')?.value,
-        startTime: document.getElementById('form-start-time')?.value || '06:00',
         endDate: document.getElementById('form-end-date')?.value,
+        
+        // เพิ่มเวลา (ถ้ามีใน HTML แล้ว)
+        startTime: document.getElementById('form-start-time')?.value || '06:00',
         endTime: document.getElementById('form-end-time')?.value || '18:00',
         
-        // --- ข้อมูลที่เพิ่มใหม่ (สำหรับหนังสือส่ง) ---
-        stayAt: document.getElementById('form-stay-at')?.value.trim() || '', // ที่พัก
-        dispatchVehicleType: document.getElementById('form-dispatch-vehicle-type')?.value.trim(), // ประเภทรถ (ระบุเอง)
-        dispatchVehicleId: document.getElementById('form-dispatch-vehicle-id')?.value.trim(),     // ทะเบียนรถ (ระบุเอง)
-
-        // --- ข้อมูลประกอบอื่นๆ ---
         attendees: attendees,
         
         expenseOption: expenseOption,
         expenseItems: expenseItems,
         totalExpense: document.getElementById('form-total-expense')?.value || 0,
         
-        // ข้อมูลพาหนะ (แบบเดิม - เผื่อใช้ในส่วนอื่น)
         vehicleOption: vehicleOption,
+        vehicleOption: document.querySelector('input[name="vehicle_option"]:checked')?.value || 'gov',
         licensePlate: document.getElementById('form-license-plate')?.value || '',
-        publicVehicleDetails: document.getElementById('public-vehicle-details-input')?.value || ''
+        publicVehicleDetails: document.getElementById('public-vehicle-details-input')?.value || '', 
+        
+        department: document.getElementById('form-department')?.value,
+        headName: document.getElementById('form-head-name')?.value
     };
 }
+// เพิ่มฟังก์ชัน wait ไว้ด้านบนสุดของไฟล์หรือนอก handleRequestFormSubmit
+const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 // ✅ [ฉบับแก้ไขสมบูรณ์] ขอเลขที่จริงก่อน -> สร้าง PDF -> อัปเดตลิงก์กลับ
 async function handleRequestFormSubmit(e) {
     e.preventDefault();
@@ -1212,145 +1327,86 @@ async function handleRequestFormSubmit(e) {
     }
 
     try {
-        console.log("🚀 Starting Form Submission (Real ID Mode)...");
-
-        // 1. ดึงข้อมูลจากฟอร์มและตรวจสอบ
         const formData = getRequestFormData();
-        if (!validateRequestForm(formData)) {
-            throw new Error("กรุณากรอกข้อมูลให้ครบถ้วน");
-        }
+        if (!validateRequestForm(formData)) throw new Error("กรุณากรอกข้อมูลให้ครบถ้วน");
 
         const user = getCurrentUser();
         if (!user) throw new Error("ไม่พบข้อมูลผู้ใช้งาน (กรุณา Login ใหม่)");
 
-        // -------------------------------------------------------------
-        // ★★★ จุดแก้ไขที่ 1: ต้องระบุ Username เพื่อให้แสดงในหน้า "ของฉัน" ★★★
-        // -------------------------------------------------------------
         formData.username = user.username; 
-        formData.status = 'Pending'; // กำหนดสถานะเริ่มต้น
+        formData.status = 'Pending';
 
-        // กำหนดค่าเริ่มต้นสำหรับไฟล์แนบ (Cloud Run Mode ตัดระบบแนบไฟล์ซับซ้อนออกชั่วคราว)
-        formData.fileExchangeUrl = '';
-        formData.fileRefDocUrl = '';
-        formData.fileOtherUrl = '';
-        formData.attachments = [];
-        formData.attachmentUrls = []; 
-        
-        // -----------------------------------------------------------------------
-        // 🔹 ขั้นตอนที่ 1: ส่งข้อมูลไปจองเลขที่เอกสารจาก Server ก่อน (Create First)
-        // -----------------------------------------------------------------------
-        console.log("💾 Saving draft to get Real ID...");
+        // --- ขั้นตอนที่ 1: จองเลขที่เอกสาร ---
         const createResult = await apiCall('POST', 'createRequest', formData);
+        if (createResult.status !== 'success') throw new Error(createResult.message || "ไม่สามารถขอเลขที่เอกสารได้");
 
-        if (createResult.status !== 'success') {
-            throw new Error(createResult.message || "ไม่สามารถขอเลขที่เอกสารได้");
-        }
-
-        // รับเลขที่จริงที่ Server ส่งกลับมา (เช่น "บค 015/2569")
         const realId = createResult.id || createResult.data?.id;
         if (!realId) throw new Error("Server ไม่ได้ส่งเลขที่เอกสารกลับมา");
 
-        console.log("✅ ได้รับเลขที่เอกสารจริง:", realId);
+        // ** หน่วงเวลาเพื่อให้ Server/Database พร้อมสำหรับการ Query **
+        console.log("⏳ Waiting for Server to index Real ID...");
+        await wait(2000);
 
-        // -----------------------------------------------------------------------
-        // 🔹 ขั้นตอนที่ 2: สร้าง PDF โดยใช้เลขที่จริงที่ได้มา (Generate PDF with Real ID)
-        // -----------------------------------------------------------------------
+        // --- ขั้นตอนที่ 2: สร้าง PDF ---
         if (submitBtn) submitBtn.innerHTML = '<span class="loader-sm"></span> กำลังสร้างเอกสาร PDF...';
         
-        // ★★★ จุดแก้ไขที่ 2: ส่ง ID จริงเข้าไปสร้าง PDF ★★★
         const pdfData = { 
             ...formData, 
-            id: realId,        // ใส่เลขจริง
-            requestId: realId, // ใส่เลขจริง
+            id: realId,
+            requestId: realId,
             doctype: 'memo' 
         };
         
         const { pdfBlob } = await generateOfficialPDF(pdfData);
 
-       // -----------------------------------------------------------------------
-        // 🔹 ขั้นตอนที่ 3: อัปโหลดไฟล์ PDF (Upload)
-        // -----------------------------------------------------------------------
+        // --- ขั้นตอนที่ 3: อัปโหลดไฟล์ ---
         if (submitBtn) submitBtn.innerHTML = '<span class="loader-sm"></span> กำลังอัปโหลดไฟล์...';
-        console.log("☁️ Uploading Final PDF...");
         
-        // ★★★ แก้ไข: แปลง Blob เป็น Base64 (Data URL) แบบ Manual เพื่อความชัวร์ ★★★
-        const base64Promise = new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-        // ตัดส่วน "data:application/pdf;base64," ออก
-        const base64String = reader.result.split(',')[1]; 
-        resolve(base64String);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(pdfBlob);
-});
+        const finalBase64 = await blobToBase64(pdfBlob);
 
-const finalBase64 = await base64Promise;
+        if (!finalBase64) throw new Error("เกิดข้อผิดพลาดในการแปลงไฟล์ PDF");
 
-// 1. ตรวจสอบความถูกต้องของ Base64 (ใช้ตัวแปร finalBase64 ให้ตรงกัน)
-if (!finalBase64 || typeof finalBase64 !== 'string') {
-    throw new Error("เกิดข้อผิดพลาดในการแปลงไฟล์ PDF (Base64 is empty)");
-}
+        const safeIdForFile = realId.replace(/[\/\\\:\.\s]/g, '-'); 
+        const safeFilename = `memo_${safeIdForFile}.pdf`;
 
-console.log("📦 PDF Prepared. Length:", finalBase64.length);
+        // ** เพิ่ม requestId เข้าไปใน payload เพื่อให้ฝั่ง Server รู้ว่าต้องผูกไฟล์กับรายการไหน **
+        const uploadRes = await apiCall('POST', 'uploadGeneratedFile', {
+            data: finalBase64,
+            filename: safeFilename,
+            mimeType: 'application/pdf',
+            username: user.username,
+            requestId: realId // สำคัญ: เพื่อป้องกัน "No item with given ID"
+        });
 
-// 2. จัดการชื่อไฟล์ให้ปลอดภัย (รองรับช่องว่างและอักขระพิเศษ)
-const safeIdForFile = realId.replace(/[\/\\\:\.\s]/g, '-'); 
-const safeFilename = `memo_${safeIdForFile}.pdf`;
+        if (uploadRes.status !== 'success') throw new Error("อัปโหลดไม่สำเร็จ: " + uploadRes.message);
 
-// 3. ส่งข้อมูลไปยัง Server
-const uploadRes = await apiCall('POST', 'uploadGeneratedFile', {
-    data: finalBase64, // ส่งข้อมูลที่ตัด Header ออกแล้ว (Base64 เพียวๆ)
-    filename: safeFilename,
-    mimeType: 'application/pdf',
-    username: user.username
-});
+        const finalFileUrl = uploadRes.url;
 
-// 4. ตรวจสอบผลลัพธ์
-if (uploadRes.status !== 'success') {
-    throw new Error("อัปโหลดเอกสารไม่สำเร็จ: " + (uploadRes.message || "Unknown Error"));
-}
-
-const finalFileUrl = uploadRes.url;
-
-        // -----------------------------------------------------------------------
-        // 🔹 ขั้นตอนที่ 4: อัปเดตลิงก์ไฟล์กลับไปที่ฐานข้อมูล (Update Back)
-        // -----------------------------------------------------------------------
-        console.log("🔗 Updating file URL to database...");
+        // --- ขั้นตอนที่ 4: อัปเดตข้อมูลกลับฐานข้อมูล ---
         await apiCall('POST', 'updateRequest', {
             requestId: realId,
             fileUrl: finalFileUrl
         });
 
-        // อัปเดตลง Firebase เพื่อให้แสดงผลทันที (ไม่ต้องรอ Sync)
+        // อัปเดต Firebase
         if (typeof db !== 'undefined') {
             const docId = realId.replace(/[\/\\\:\.]/g, '-');
             await db.collection('requests').doc(docId).set({
                 ...formData,
                 id: realId,
-                fileUrl: finalFileUrl, // บันทึกลิงก์
-                pdfUrl: finalFileUrl,  // backup field
+                fileUrl: finalFileUrl,
                 status: 'Pending',
-                timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-                isSynced: true
+                timestamp: firebase.firestore.FieldValue.serverTimestamp()
             }, { merge: true });
         }
 
-        // -----------------------------------------------------------------------
-        // 🔹 เสร็จสิ้น
-        // -----------------------------------------------------------------------
-        
-        // ★★★ จุดแก้ไขที่ 3: สั่งเปิดไฟล์ทันที ★★★
-        if (finalFileUrl) {
-            window.open(finalFileUrl, '_blank');
-        }
+        if (finalFileUrl) window.open(finalFileUrl, '_blank');
 
         showAlert("สำเร็จ", `สร้างเอกสารเลขที่ ${realId} เรียบร้อยแล้ว`);
         
-        // เคลียร์ค่าและกลับหน้าหลัก
         resetRequestForm();
         if (typeof clearRequestsCache === 'function') clearRequestsCache();
-        await fetchUserRequests(); // ดึงข้อมูลใหม่เพื่อให้รายการล่าสุดปรากฏ
+        await fetchUserRequests();
         switchPage('dashboard-page');
 
     } catch (error) {
@@ -1388,29 +1444,7 @@ function tryAutoFillRequester(retry = 0) {
     else if (retry < 5) setTimeout(() => tryAutoFillRequester(retry + 1), 1000);
 }
 
-// ✅ ฟังก์ชัน Modal ส่งบันทึกข้อความ (ใส่ไว้เพื่อป้องกัน error)
-async function handleMemoSubmitFromModal(e) {
-    e.preventDefault();
-    const user = getCurrentUser();
-    if (!user) return;
-    const requestId = document.getElementById('memo-modal-request-id').value;
-    const memoType = document.querySelector('input[name="modal_memo_type"]:checked').value;
-    const fileInput = document.getElementById('modal-memo-file');
-    let fileObject = null;
-    if (memoType === 'non_reimburse' && fileInput.files.length > 0) { fileObject = await fileToObject(fileInput.files[0]); }
-    
-    toggleLoader('send-memo-submit-button', true);
-    try {
-        const result = await apiCall('POST', 'uploadMemo', { refNumber: requestId, file: fileObject, username: user.username, memoType: memoType });
-        if (result.status === 'success') { 
-            showAlert('สำเร็จ', 'ส่งบันทึกข้อความสำเร็จ'); 
-            document.getElementById('send-memo-modal').style.display = 'none'; 
-            document.getElementById('send-memo-form').reset(); 
-            await fetchUserRequests(); 
-        } 
-        else { showAlert('ผิดพลาด', result.message); }
-    } catch (error) { showAlert('ผิดพลาด', error.message); } finally { toggleLoader('send-memo-submit-button', false); }
-}
+
 
 // Public Data
 async function loadPublicWeeklyData() {
@@ -1972,3 +2006,161 @@ function validateRequestForm(data) {
 
     return true;
 }
+window.editRequest = async function(requestId) {
+    console.log("Triggering edit for:", requestId);
+    await openEditPage(requestId);
+};
+
+window.deleteRequest = async function(requestId) {
+    console.log("Triggering delete for:", requestId);
+    await handleDeleteRequest(requestId);
+};
+// ไฟล์: js/requests.js
+
+// ==========================================
+// 3. ฟังก์ชันสำหรับหน้า "ส่งบันทึก" (แยกออกมาเฉพาะ)
+// ==========================================
+
+async function fetchPendingMemos() {
+    const user = getCurrentUser();
+    if (!user) return;
+
+    // UI Setup
+    const container = document.getElementById('pending-memos-list');
+    const loader = document.getElementById('pending-memos-loader');
+    const noMsg = document.getElementById('no-pending-memos-message');
+    
+    container.innerHTML = '';
+    loader.classList.remove('hidden');
+    noMsg.classList.add('hidden');
+
+    try {
+        // ใช้ Logic เดียวกับ fetchUserRequests แต่เราจะกรองในขั้นถัดไป
+        // เพื่อความชัวร์ ให้ดึงข้อมูลปีปัจจุบันและย้อนหลัง 1 ปี (เผื่อมีงานค้างข้ามปี)
+        const currentYear = new Date().getFullYear() + 543;
+        
+        // ดึงข้อมูลปีปัจจุบัน
+        const resultNow = await apiCall('GET', 'getRequestsByYear', { year: currentYear, username: user.username });
+        let requests = (resultNow.status === 'success') ? resultNow.data || [] : [];
+
+        // ผสานข้อมูล Firebase เพื่อสถานะที่แม่นยำ
+        if (typeof db !== 'undefined') {
+            const snapshot = await db.collection('requests').where('username', '==', user.username).get();
+            const firebaseData = {};
+            snapshot.forEach(doc => { firebaseData[doc.id] = doc.data(); });
+
+            requests = requests.map(req => {
+                const safeId = req.id.replace(/[\/\\:\.]/g, '-');
+                const fbDoc = firebaseData[safeId];
+                if (fbDoc) {
+                    return { ...req, ...fbDoc }; // ใช้ข้อมูลล่าสุดจาก FB
+                }
+                return req;
+            });
+        }
+
+        // ★ กรองเฉพาะรายการที่ต้องส่งบันทึก ★
+        // เงื่อนไข: (มีเลขที่เอกสาร) AND (ยังไม่เสร็จสิ้น OR สถานะ = นำกลับไปแก้ไข)
+        const pendingRequests = requests.filter(req => {
+            const hasId = req.id && req.id !== '' && !req.id.includes('รอ');
+            
+            // เช็คสถานะเสร็จสิ้น
+            const isCompleted = 
+                req.status === 'เสร็จสิ้น' || 
+                req.status === 'เสร็จสิ้น/รับไฟล์ไปใช้งาน' || 
+                req.memoStatus === 'เสร็จสิ้น/รับไฟล์ไปใช้งาน' ||
+                req.commandStatus === 'เสร็จสิ้น'; // ถ้าออกคำสั่งแล้วถือว่าผ่านขั้นตอนนี้แล้ว
+
+            // เช็คสถานะแก้ไข
+            const isFixing = req.status === 'นำกลับไปแก้ไข' || req.memoStatus === 'นำกลับไปแก้ไข';
+            
+            // ยังไม่มีไฟล์แนบ (หรือมีแต่ต้องแก้) และยังไม่จบกระบวนการ
+            // หมายเหตุ: เช็ค completedMemoUrl ด้วย เพราะบางทีอาจจะส่งแล้วแต่ status ยังไม่อัปเดต
+            const hasMemoFile = req.completedMemoUrl && req.completedMemoUrl !== "";
+
+            if (!hasId) return false; // ไม่มีเลข ไม่ต้องแสดง
+            
+            // แสดงถ้า: (ต้องแก้ไข) หรือ (ยังไม่เสร็จ และ ยังไม่มีไฟล์แนบสมบูรณ์)
+            return isFixing || (!isCompleted && !hasMemoFile);
+        });
+
+        // เรียงลำดับ (เก่า -> ใหม่ จะได้รีบเคลียร์ของเก่า)
+        pendingRequests.sort((a, b) => new Date(a.docDate) - new Date(b.docDate));
+
+        renderPendingMemos(pendingRequests);
+
+    } catch (error) {
+        console.error("Error fetching pending memos:", error);
+        container.innerHTML = `<p class="text-center text-red-500">โหลดข้อมูลไม่สำเร็จ: ${error.message}</p>`;
+    } finally {
+        loader.classList.add('hidden');
+    }
+}
+
+function renderPendingMemos(requests) {
+    const container = document.getElementById('pending-memos-list');
+    const noMsg = document.getElementById('no-pending-memos-message');
+
+    if (requests.length === 0) {
+        noMsg.classList.remove('hidden');
+        return;
+    }
+
+    container.innerHTML = requests.map(req => {
+        const safeId = escapeHtml(req.id);
+        const isFixing = req.status === 'นำกลับไปแก้ไข' || req.memoStatus === 'นำกลับไปแก้ไข';
+        
+        let statusBadge = isFixing 
+            ? `<span class="bg-red-100 text-red-700 text-xs font-bold px-2 py-1 rounded border border-red-200">⚠️ ตีกลับให้แก้ไข</span>`
+            : `<span class="bg-yellow-100 text-yellow-700 text-xs font-bold px-2 py-1 rounded border border-yellow-200">⏳ รอส่งบันทึก</span>`;
+
+        // ปุ่มดูไฟล์ (เพื่อให้ดูเลขที่/รายละเอียดก่อนแนบ)
+        const viewFileUrl = req.fileUrl || req.pdfUrl;
+        const viewBtn = viewFileUrl 
+            ? `<a href="${viewFileUrl}" target="_blank" class="text-indigo-600 hover:underline text-sm mr-4">📄 ดูรายละเอียด</a>` 
+            : '';
+
+        return `
+        <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div class="flex-1">
+                    <div class="flex items-center gap-3 mb-1">
+                        <h4 class="text-lg font-bold text-gray-800">${safeId}</h4>
+                        ${statusBadge}
+                    </div>
+                    <p class="text-gray-600 font-medium">${escapeHtml(req.purpose)}</p>
+                    <p class="text-sm text-gray-500 mt-1">
+                        📅 ${formatDisplayDate(req.startDate)} | 📍 ${escapeHtml(req.location)}
+                    </p>
+                    <div class="mt-2">
+                        ${viewBtn}
+                    </div>
+                </div>
+                
+                <div class="w-full sm:w-auto">
+                    <button onclick="openSendMemoFromList('${safeId}')" class="btn bg-teal-600 hover:bg-teal-700 text-white w-full sm:w-auto shadow-md flex items-center justify-center gap-2 py-2 px-6">
+                        <span>📤</span>
+                        <span>ส่งบันทึก/แนบไฟล์</span>
+                    </button>
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// ฟังก์ชันเปิด Modal จากหน้านี้ (เพิ่ม Global Function)
+window.openSendMemoFromList = function(requestId) {
+    document.getElementById('memo-modal-request-id').value = requestId;
+    
+    // Reset Form
+    document.getElementById('send-memo-form').reset();
+    
+    // Trigger การตรวจสอบเงื่อนไข Radio Button (เพื่อให้ UI อัปเดต)
+    const nonReimburseRadio = document.getElementById('memo_type_non_reimburse');
+    if(nonReimburseRadio) {
+        nonReimburseRadio.checked = true; // Default เป็นแบบไม่เบิก (แนบไฟล์)
+        nonReimburseRadio.dispatchEvent(new Event('change'));
+    }
+
+    document.getElementById('send-memo-modal').style.display = 'flex';
+};
