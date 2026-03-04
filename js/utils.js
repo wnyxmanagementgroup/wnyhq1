@@ -1,6 +1,20 @@
-// --- API HELPER FUNCTIONS ---
-// --- API HELPER FUNCTIONS (Enhanced Stability) ---
+// --- CACHE SYSTEM ---
+window.userRequestsCache = null;      // เก็บข้อมูลคำขอของ User
+window.userRequestsCacheTime = 0;     // เก็บ Timestamp ล่าสุดที่ดึงข้อมูล
+window.userRequestsCacheYear = null;  // เก็บปีของข้อมูลที่ Cache ไว้
+const CACHE_TTL_MS = 5 * 60 * 1000;   // อายุ Cache: 5 นาที (หน่วยเป็นมิลลิวินาที)
 
+// ฟังก์ชันสำหรับเคลียร์ Cache (จะถูกเรียกใช้เวลา เพิ่ม/ลบ/แก้ไข ข้อมูล)
+function clearRequestsCache() {
+    window.userRequestsCache = null;
+    window.userRequestsCacheTime = 0;
+    window.userRequestsCacheYear = null;
+    window.allRequestsCache = null;
+    if (typeof allRequestsCache !== 'undefined') allRequestsCache = [];
+    if (typeof allMemosCache !== 'undefined') allMemosCache = [];
+    if (typeof userMemosCache !== 'undefined') userMemosCache = [];
+    console.log("🧹 เคลียร์ Cache ข้อมูลเรียบร้อยแล้ว");
+}
 async function apiCall(method, action, payload = {}, retries = 2) {
     let url = SCRIPT_URL;
     const TIMEOUT_MS = 30000; // 30 วินาที (ถ้าเกินนี้ให้ตัด)
@@ -127,7 +141,8 @@ function fileToObject(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => {
-            const data = reader.result.toString().split(',')[1];
+            const parts = reader.result ? reader.result.toString().split(',') : [];
+            const data = parts.length > 1 ? parts[1] : '';
             resolve({ filename: file.name, mimeType: file.type, data: data });
         };
         reader.onerror = error => reject(error);
@@ -139,7 +154,8 @@ function blobToBase64(blob) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onloadend = () => {
-        const base64String = reader.result.split(',')[1]; 
+        const parts = reader.result ? reader.result.split(',') : [];
+        const base64String = parts.length > 1 ? parts[1] : '';
         resolve(base64String);
     };
     reader.onerror = reject;
@@ -158,11 +174,7 @@ function formatDisplayDate(dateString) {
     }
 }
 
-function clearRequestsCache() {
-    allRequestsCache = [];
-    allMemosCache = [];
-    userMemosCache = [];
-}
+// clearRequestsCache ถูกรวมไว้ที่ด้านบนของไฟล์แล้ว
 
 function checkAdminAccess() {
     const user = getCurrentUser();

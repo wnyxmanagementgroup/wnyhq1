@@ -13,27 +13,64 @@ function checkAdminAccess() {
 // --- FETCH DATA ---
 // --- แก้ไข: ดึงข้อมูลเนื้อหาจาก Google Sheet เป็นหลัก 100% ---
 // --- แก้ไข: เรียงลำดับจาก เลขที่เอกสาร (ล่าสุดขึ้นก่อน) และกรองปีงบประมาณ ---
+// --- FETCH DATA (Admin) ---
+// ดึงข้อมูลคำขอทั้งหมด (สำหรับหน้าออกคำสั่ง) โดยผสานข้อมูลจาก Google Sheets และ Firestore
 async function fetchAllRequestsForCommand() {
     try {
+        // 1. ตรวจสอบสิทธิ์ Admin เบื้องต้น (Client-side)
         if (!checkAdminAccess()) return;
         
-        // 1. ดึงปีงบประมาณที่เลือกจาก Dropdown
+        // 2. แสดง Loader
+        const container = document.getElementById('admin-requests-list');
+        if (container) {
+            container.innerHTML = `
+                <div class="flex flex-col items-center justify-center py-10">
+                    <span class="loader mb-3"></span>
+                    <p class="text-gray-500 animate-pulse">กำลังโหลดข้อมูลคำขอทั้งหมด...</p>
+                </div>`;
+        }
+
+        // 3. ★★★ รอให้ Firebase Auth พร้อมใช้งาน (แก้ปัญหา Rules Block) ★★★
+        if (typeof firebase !== 'undefined' && !firebase.auth().currentUser) {
+            console.warn("⏳ Waiting for Firebase Auth...");
+            await new Promise(resolve => {
+                const unsubscribe = firebase.auth().onAuthStateChanged(user => {
+                    unsubscribe();
+                    resolve(user);
+                });
+            });
+            
+            // ถ้าจังหวะนี้ยังไม่มี User แปลว่าไม่ได้ล็อกอินจริง -> ดีดออก
+            if (!firebase.auth().currentUser) {
+                console.error("❌ Admin not logged in (Firebase)");
+                showAlert('แจ้งเตือน', 'กรุณาเข้าสู่ระบบใหม่');
+                return;
+            }
+        }
+
+        // 4. ดึงปีงบประมาณที่เลือกจาก Dropdown
         const yearSelect = document.getElementById('admin-year-select');
         const currentYear = new Date().getFullYear() + 543;
         const selectedYear = yearSelect ? parseInt(yearSelect.value) : currentYear;
         
-        // 2. ดึงข้อมูลจาก Google Sheets (Source of Truth)
+        console.log(`📥 Fetching admin requests for year: ${selectedYear}`);
+
+        // 5. ดึงข้อมูลหลักจาก Google Sheets (Source of Truth)
         let requests = [];
         const result = await apiCall('GET', 'getAllRequests');
-        if (result.status === 'success') requests = result.data || [];
+        
+        if (result.status === 'success') {
+            requests = result.data || [];
+        } else {
+            throw new Error(result.message || "Failed to fetch from Google Sheets");
+        }
 
-        // 3. กรองข้อมูลตามปีงบประมาณที่เลือก (Filter by Year)
-        // เช็คจาก ID (เช่น "บค001/2569") หรือจาก docDate
+        // 6. กรองข้อมูลตามปีงบประมาณ (Filter by Year)
         requests = requests.filter(req => {
             const idYear = req.id ? parseInt(req.id.split('/')[1]) : 0;
-            if (idYear > 0) return idYear === selectedYear; // ถ้ามี ID ให้เช็คปีจาก ID
+            if (idYear > 0) return idYear === selectedYear; // เช็คจาก ID (แม่นยำที่สุด)
             
-            // ถ้าไม่มี ID ให้เช็คจากวันที่เอกสาร
+            // Fallback: เช็คจากวันที่เอกสาร
             if (req.docDate) {
                 const docY = new Date(req.docDate).getFullYear() + 543;
                 return docY === selectedYear;
@@ -41,47 +78,62 @@ async function fetchAllRequestsForCommand() {
             return false;
         });
 
-        // 4. Merge ข้อมูลจาก Firebase (เพื่อเอาสถานะล่าสุดและลิงก์ไฟล์)
+        // 7. Merge ข้อมูลจาก Firestore (เพื่อเอาสถานะล่าสุดและลิงก์ไฟล์ Real-time)
         if (typeof db !== 'undefined') {
-            const snapshot = await db.collection('requests').get();
-            const firebaseData = {};
-            snapshot.forEach(doc => { firebaseData[doc.id] = doc.data(); });
+            try {
+                // ดึงข้อมูลทั้งหมดจาก Collection 'requests'
+                const snapshot = await db.collection('requests').get();
+                const firebaseData = {};
+                snapshot.forEach(doc => { firebaseData[doc.id] = doc.data(); });
 
-            requests = requests.map(req => {
-                const safeId = req.id.replace(/[\/\\:\.]/g, '-');
-                const fbDoc = firebaseData[safeId];
-                
-                // จัดการรายชื่อ (ยึดตาม Google Sheets เป็นหลักเพื่อป้องกันข้อมูลหาย)
-                let sheetAttendees = [];
-                try {
-                    if (typeof req.attendees === 'string') sheetAttendees = JSON.parse(req.attendees);
-                    else if (Array.isArray(req.attendees)) sheetAttendees = req.attendees;
-                } catch(e) { sheetAttendees = []; }
+                requests = requests.map(req => {
+                    // สร้าง Key สำหรับค้นหาใน Firestore (แปลงตัวอักษรพิเศษเป็น -)
+                    const safeId = req.id ? req.id.replace(/[\/\\:\.]/g, '-') : '';
+                    const fbDoc = firebaseData[safeId];
+                    
+                    // แปลงรายชื่อผู้ร่วมเดินทาง (ป้องกัน JSON Error)
+                    let sheetAttendees = [];
+                    try {
+                        if (typeof req.attendees === 'string') sheetAttendees = JSON.parse(req.attendees);
+                        else if (Array.isArray(req.attendees)) sheetAttendees = req.attendees;
+                    } catch(e) { sheetAttendees = []; }
 
-                if (fbDoc) {
-                    return {
-                        ...req,
-                        pdfUrl: fbDoc.pdfUrl || fbDoc.fileUrl || req.pdfUrl,
-                        commandPdfUrl: fbDoc.commandPdfUrl || fbDoc.commandBookUrl || req.commandPdfUrl,
-                        dispatchBookUrl: fbDoc.dispatchBookUrl || fbDoc.dispatchBookPdfUrl || req.dispatchBookUrl,
-                        timestamp: fbDoc.timestamp || req.timestamp,
-                        attendees: sheetAttendees // บังคับใช้รายชื่อจาก Sheet
-                    };
-                }
-                return { ...req, attendees: sheetAttendees };
-            });
+                    if (fbDoc) {
+                        // ถ้าเจอใน Firestore ให้ใช้ข้อมูลล่าสุดจาก Firestore ทับ
+                        return {
+                            ...req,
+                            // ใช้ลิงก์จาก Firestore เป็นหลัก (เพราะอัปเดตเร็วกว่า Sheet)
+                            pdfUrl: fbDoc.pdfUrl || fbDoc.fileUrl || req.pdfUrl,
+                            fileUrl: fbDoc.fileUrl || fbDoc.pdfUrl || req.fileUrl,
+                            memoPdfUrl: fbDoc.memoPdfUrl || req.memoPdfUrl,
+                            
+                            commandPdfUrl: fbDoc.commandPdfUrl || fbDoc.commandBookUrl || req.commandPdfUrl,
+                            dispatchBookUrl: fbDoc.dispatchBookUrl || fbDoc.dispatchBookPdfUrl || req.dispatchBookUrl,
+                            
+                            status: fbDoc.status || req.status,
+                            commandStatus: fbDoc.commandStatus || req.commandStatus,
+                            
+                            timestamp: fbDoc.timestamp || req.timestamp,
+                            attendees: sheetAttendees // ใช้รายชื่อจาก Sheet เสมอ (กันพลาด)
+                        };
+                    }
+                    // ถ้าไม่เจอใน Firestore ให้ใช้ข้อมูลเดิมจาก Sheet
+                    return { ...req, attendees: sheetAttendees };
+                });
+            } catch (fbError) {
+                console.warn("⚠️ Firestore Merge Failed (Using Sheet Data only):", fbError);
+                // ไม่ throw error เพื่อให้ทำงานต่อได้โดยใช้ข้อมูลจาก Sheet
+            }
         }
 
-        // 5. ★★★ แก้ไขการเรียงลำดับ (Sort) ★★★
-        // ใช้ Request ID เป็นตัวหลักในการเรียง (เพราะเลขรันต่อเนื่อง) 
-        // เรียงจาก มาก -> น้อย (รายการล่าสุดขึ้นก่อน)
+        // 8. เรียงลำดับ (Sort): เลขที่เอกสารมาก -> น้อย (ล่าสุดขึ้นก่อน)
         requests.sort((a, b) => {
-            // ฟังก์ชันแยกเลข ID (เช่น "บค005/2569" -> 5)
             const parseId = (id) => {
                 if (!id) return 0;
                 try {
-                    const parts = id.split('/'); // แยกปีกับเลข
-                    const numberPart = parseInt(parts[0].replace(/\D/g, '')) || 0; // เอาเฉพาะตัวเลขข้างหน้า
+                    // แยกเลขหน้าเครื่องหมาย / (เช่น "บค005/2569" -> 5)
+                    const parts = id.split('/');
+                    const numberPart = parseInt(parts[0].replace(/\D/g, '')) || 0;
                     return numberPart;
                 } catch (e) { return 0; }
             };
@@ -89,27 +141,38 @@ async function fetchAllRequestsForCommand() {
             const idNumA = parseId(a.id);
             const idNumB = parseId(b.id);
 
-            // ถ้าเลข ID ต่างกัน ให้เรียงเลขมากอยู่บน (Newest First)
-            if (idNumA !== idNumB) {
-                return idNumB - idNumA;
-            }
+            if (idNumA !== idNumB) return idNumB - idNumA; // เลขมากขึ้นก่อน
 
-            // ถ้าไม่มี ID หรือเลขเท่ากัน ให้ใช้วันที่ Timestamp หรือ DocDate ช่วย
+            // ถ้าเลขเท่ากัน หรือไม่มีเลข ให้ใช้วันที่
             const getTime = (val) => {
                 if (!val) return 0;
-                if (val.seconds) return val.seconds * 1000;
+                if (val.seconds) return val.seconds * 1000; // Firestore Timestamp
                 return new Date(val).getTime();
             };
             return getTime(b.timestamp || b.docDate) - getTime(a.timestamp || a.docDate);
         });
 
-        // อัปเดต Cache
+        console.log(`✅ Loaded ${requests.length} admin requests.`);
+
+        // 9. อัปเดต Cache และแสดงผล
         allRequestsCache = requests; 
         renderAdminRequestsList(requests);
 
     } catch (error) { 
-        console.error(error);
-        showAlert('ผิดพลาด', 'ไม่สามารถโหลดข้อมูลได้'); 
+        console.error("❌ fetchAllRequestsForCommand Error:", error);
+        
+        const container = document.getElementById('admin-requests-list');
+        if (container) {
+            container.innerHTML = `
+                <div class="text-center py-10">
+                    <p class="text-red-500 font-medium">ไม่สามารถโหลดข้อมูลได้</p>
+                    <p class="text-sm text-gray-500 mt-2">${error.message}</p>
+                    <button onclick="fetchAllRequestsForCommand()" class="btn btn-sm bg-gray-200 hover:bg-gray-300 mt-4">
+                        ลองใหม่อีกครั้ง
+                    </button>
+                </div>`;
+        }
+        showAlert('ผิดพลาด', 'ไม่สามารถโหลดข้อมูลได้: ' + error.message); 
     }
 }
 async function fetchAllMemos() {
@@ -246,7 +309,26 @@ async function handleAdminGenerateCommand() {
 }
 
 // --- RENDER FUNCTIONS ---
-// --- แก้ไขจุดที่ 2: เพิ่มปุ่มหนังสือส่งให้แสดงตลอดเวลา ---
+// ในไฟล์ js/admin.js
+// --- Helper Function: แปลงวันที่เป็นไทย ---
+function formatThaiDate(dateString) {
+    if (!dateString) return '-';
+    const date = new Date(dateString);
+    // กรณี Date Invalid ให้คืนค่าเดิมกลับไป
+    if (isNaN(date.getTime())) return dateString;
+    
+    const thaiMonths = [
+        "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
+        "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"
+    ];
+    
+    const d = date.getDate();
+    const m = thaiMonths[date.getMonth()];
+    const y = date.getFullYear() + 543;
+    
+    return `${d} ${m} ${y}`;
+}
+// --- 1. ฟังก์ชันแสดงรายการคำขอ (แบบละเอียด + Dropdown เปลี่ยนสถานะ) ---
 function renderAdminRequestsList(requests) {
     const container = document.getElementById('admin-requests-list');
     
@@ -279,21 +361,14 @@ function renderAdminRequestsList(requests) {
         
         let peopleCategory = totalPeople === 1 ? "คำสั่งเดี่ยว" : (totalPeople <= 5 ? "คำสั่งกลุ่มเล็ก" : "คำสั่งกลุ่มใหญ่");
         
-        // --- ★★★ ส่วนที่เพิ่มใหม่: Logic แสดงสถานะเบิกจ่าย ★★★ ---
+        // --- Badge สถานะเบิกจ่าย ---
         let expenseBadge = '';
         if (request.expenseOption === 'partial') {
-            // กรณีเบิก: แสดงจำนวนเงินด้วย (ใส่ลูกน้ำคั่นหลักพัน)
             const amount = request.totalExpense ? Number(request.totalExpense).toLocaleString() : '0';
-            expenseBadge = `<span class="ml-2 px-2 py-0.5 rounded text-xs bg-teal-100 text-teal-800 border border-teal-200 font-bold whitespace-nowrap">
-                                💸 เบิกงบ (${amount} บ.)
-                            </span>`;
+            expenseBadge = `<span class="ml-2 px-2 py-0.5 rounded text-xs bg-teal-100 text-teal-800 border border-teal-200 font-bold whitespace-nowrap">💸 เบิกงบ (${amount} บ.)</span>`;
         } else {
-            // กรณีไม่เบิก
-            expenseBadge = `<span class="ml-2 px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-500 border border-gray-200 whitespace-nowrap">
-                                ⛔ ไม่เบิก
-                            </span>`;
+            expenseBadge = `<span class="ml-2 px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-500 border border-gray-200 whitespace-nowrap">⛔ ไม่เบิก</span>`;
         }
-        // -----------------------------------------------------
 
         const safeId = escapeHtml(request.id);
         const safeName = escapeHtml(request.requesterName);
@@ -301,25 +376,36 @@ function renderAdminRequestsList(requests) {
         const safeLocation = escapeHtml(request.location);
         const safeDate = `${formatDisplayDate(request.startDate)} - ${formatDisplayDate(request.endDate)}`;
 
-        // --- ปุ่มหนังสือส่ง (คงเดิม) ---
+        // --- ปุ่มหนังสือส่ง ---
         const dispatchUrl = request.dispatchBookUrl || request.dispatchBookPdfUrl;
         let dispatchButtonHtml = '';
-        
         if (dispatchUrl) {
             dispatchButtonHtml = `
                 <div class="flex gap-1">
-                    <a href="${dispatchUrl}" target="_blank" class="btn bg-purple-600 hover:bg-purple-700 text-white btn-sm flex items-center gap-1 shadow-sm px-2" title="ดูไฟล์ PDF">
-                        📦 ดู
-                    </a>
-                    <button onclick="openDispatchModal('${safeId}')" class="btn bg-purple-100 hover:bg-purple-200 text-purple-700 btn-sm flex items-center gap-1 shadow-sm px-2 border border-purple-300" title="แก้ไขหนังสือส่ง">
-                        ✏️ แก้ไข
-                    </button>
+                    <a href="${dispatchUrl}" target="_blank" class="btn bg-purple-600 hover:bg-purple-700 text-white btn-sm flex items-center gap-1 shadow-sm px-2" title="ดูไฟล์ PDF">📦 ดู</a>
+                    <button onclick="openDispatchModal('${safeId}')" class="btn bg-purple-100 hover:bg-purple-200 text-purple-700 btn-sm flex items-center gap-1 shadow-sm px-2 border border-purple-300" title="แก้ไขหนังสือส่ง">✏️</button>
                 </div>`;
         } else {
             dispatchButtonHtml = `
                 <button onclick="openDispatchModal('${safeId}')" class="btn bg-purple-500 hover:bg-purple-600 text-white btn-sm flex items-center gap-1 shadow-sm px-3">
                     📦 ออกหนังสือส่ง
                 </button>`;
+        }
+
+        // --- [NEW] ปุ่มส่งบันทึกแทน (สำหรับ Admin) ---
+        // แสดงเมื่อยังไม่มีไฟล์บันทึกสมบูรณ์
+        let adminMemoBtn = '';
+        if (!request.completedMemoUrl) {
+            adminMemoBtn = `
+                <button onclick="openSendMemoFromList('${safeId}')" class="btn bg-orange-500 hover:bg-orange-600 text-white btn-sm flex items-center gap-1 shadow-sm px-3 animate-pulse">
+                    📤 ส่งบันทึกแทน
+                </button>`;
+        } else {
+            // ถ้ามีแล้ว ให้แสดงปุ่มดูไฟล์แทน
+             adminMemoBtn = `
+                <a href="${request.completedMemoUrl}" target="_blank" class="btn bg-blue-500 hover:bg-blue-600 text-white btn-sm flex items-center gap-1 shadow-sm px-3">
+                    📄 ดูบันทึก
+                </a>`;
         }
 
         let commandActionButtons = '';
@@ -338,7 +424,7 @@ function renderAdminRequestsList(requests) {
         } else {
             commandActionButtons = `
                 <div class="flex flex-wrap gap-2 justify-end mt-2 md:mt-0">
-                    ${dispatchButtonHtml}
+                    ${adminMemoBtn} ${dispatchButtonHtml}
                     <button onclick="openAdminGenerateCommand('${safeId}')" class="btn bg-green-500 hover:bg-green-600 text-white btn-sm shadow-sm w-full md:w-auto">
                         ✅ ออกคำสั่ง (${peopleCategory})
                     </button>
@@ -378,6 +464,86 @@ function renderAdminRequestsList(requests) {
             </div>
         </div>`;
     }).join('');
+}
+
+// --- 2. ฟังก์ชัน Helper: เลือกสีของ Dropdown ---
+function getStatusClass(status) {
+    switch(status) {
+        case 'อนุมัติ': 
+        case 'เสร็จสิ้น':
+            return 'text-green-700 bg-green-50 ring-green-200'; // สีเขียว
+        case 'ไม่อนุมัติ': 
+            return 'text-red-700 bg-red-50 ring-red-200'; // สีแดง
+        case 'แก้ไข': 
+        case 'นำกลับไปแก้ไข':
+            return 'text-orange-700 bg-orange-50 ring-orange-200'; // สีส้ม
+        case 'รอตรวจสอบ':
+            return 'text-yellow-700 bg-yellow-50 ring-yellow-200'; // สีเหลือง
+        case 'กำลังดำเนินการ':
+            return 'text-blue-700 bg-blue-50 ring-blue-200'; // สีฟ้า
+        default: 
+            return 'text-gray-700 bg-gray-50 ring-gray-200'; // สีเทา
+    }
+}
+
+// --- 3. ฟังก์ชันอัปเดตสถานะ (เชื่อมต่อ API) ---
+async function updateMemoStatus(requestId, newStatus) {
+    // ถามยืนยันก่อนเปลี่ยน
+    if(!confirm(`ยืนยันการเปลี่ยนสถานะเป็น "${newStatus}" ใช่หรือไม่?`)) {
+        // ถ้ายกเลิก ให้โหลดตารางใหม่เพื่อคืนค่าเดิม
+        renderAdminRequestsList(allRequestsCache);
+        return;
+    }
+
+    try {
+        // 1. ส่งข้อมูลไปอัปเดตที่ Google Sheets (GAS)
+        // ใช้ apiCall ที่คุณมีอยู่แล้ว
+        const result = await apiCall('POST', 'updateRequest', {
+            id: requestId,
+            status: newStatus
+        });
+
+        if (result.status === 'success') {
+            
+            // 2. อัปเดต Firestore (เพื่อให้ User เห็นสถานะเปลี่ยนทันทีแบบ Realtime)
+            if (typeof db !== 'undefined') {
+                const safeId = requestId.replace(/[\/\\:\.]/g, '-');
+                // ใช้ update เพื่อแก้เฉพาะฟิลด์ status
+                await db.collection('requests').doc(safeId).update({
+                    status: newStatus,
+                    lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+                }).catch(err => console.warn("Firestore update warning:", err));
+            }
+
+            // 3. อัปเดต Cache ในเครื่อง Admin เอง (เพื่อให้สีเปลี่ยนโดยไม่ต้องโหลดใหม่)
+            const reqIndex = allRequestsCache.findIndex(r => r.id === requestId);
+            if(reqIndex !== -1) {
+                allRequestsCache[reqIndex].status = newStatus;
+                renderAdminRequestsList(allRequestsCache); // รีเฟรชตารางให้สีเปลี่ยน
+            }
+            
+            // แจ้งเตือนเล็กๆ
+            // showAlert('สำเร็จ', `เปลี่ยนสถานะเป็น ${newStatus} เรียบร้อยแล้ว`); 
+            
+        } else {
+            throw new Error(result.message);
+        }
+
+    } catch (error) {
+        console.error("Update Status Error:", error);
+        showAlert('ผิดพลาด', 'ไม่สามารถเปลี่ยนสถานะได้: ' + error.message);
+        renderAdminRequestsList(allRequestsCache); // คืนค่าเดิมกรณี Error
+    }
+}
+// --- ฟังก์ชัน Helper สำหรับเปลี่ยนสี Dropdown ---
+function getStatusClass(status) {
+    switch(status) {
+        case 'อนุมัติ': return 'text-green-600 bg-green-50 border-green-200';
+        case 'ไม่อนุมัติ': return 'text-red-600 bg-red-50 border-red-200';
+        case 'แก้ไข': return 'text-orange-600 bg-orange-50 border-orange-200';
+        case 'เสร็จสิ้น': return 'text-blue-600 bg-blue-50 border-blue-200';
+        default: return 'text-yellow-600 bg-yellow-50 border-yellow-200';
+    }
 }
 // --- แก้ไขในไฟล์ js/admin.js ---
 
@@ -845,7 +1011,6 @@ async function generateOfficialPDF(requestData) {
 }
 
 
-// --- ส่วนที่ 1: แก้ไข renderUsersList ให้มีปุ่ม Edit ---
 function renderUsersList(users) {
     const container = document.getElementById('users-content');
     if (!users || users.length === 0) { 
@@ -863,185 +1028,29 @@ function renderUsersList(users) {
                     <th class="px-4 py-2 text-left">ตำแหน่ง</th>
                     <th class="px-4 py-2 text-left">กลุ่มสาระ/งาน</th>
                     <th class="px-4 py-2 text-left">บทบาท</th>
-                    <th class="px-4 py-2 text-left w-40">การจัดการ</th>
+                    <th class="px-4 py-2 text-center">การจัดการ</th>
                 </tr>
             </thead>
             <tbody>
                 ${users.map(user => `
-                <tr class="border-b hover:bg-gray-50 transition">
-                    <td class="px-4 py-2 font-medium text-indigo-600">${escapeHtml(user.username)}</td>
-                    <td class="px-4 py-2">${escapeHtml(user.fullName)}</td>
-                    <td class="px-4 py-2 text-sm text-gray-600">${escapeHtml(user.position)}</td>
-                    <td class="px-4 py-2 text-sm text-gray-600">${escapeHtml(user.department)}</td>
-                    <td class="px-4 py-2">
-                        <span class="px-2 py-1 rounded text-xs font-bold ${user.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}">
-                            ${escapeHtml(user.role)}
-                        </span>
-                    </td>
-                    <td class="px-4 py-2 flex gap-2">
-                        <button onclick="openEditUserModal('${escapeHtml(user.username)}')" class="btn bg-yellow-500 hover:bg-yellow-600 text-white btn-xs px-2 py-1 shadow-sm">
-                            แก้ไข
+                <tr class="border-b hover:bg-gray-50">
+                    <td class="px-4 py-2" data-label="ชื่อผู้ใช้">${escapeHtml(user.username)}</td>
+                    <td class="px-4 py-2" data-label="ชื่อ-นามสกุล">${escapeHtml(user.fullName)}</td>
+                    <td class="px-4 py-2" data-label="ตำแหน่ง">${escapeHtml(user.position)}</td>
+                    <td class="px-4 py-2" data-label="กลุ่มสาระ">${escapeHtml(user.department)}</td>
+                    <td class="px-4 py-2" data-label="บทบาท">${escapeHtml(user.role)}</td>
+                    <td class="px-4 py-2 text-center" data-label="การจัดการ">
+                        <button onclick="openEditUserModal('${escapeHtml(user.username)}', '${escapeHtml(user.fullName)}', '${escapeHtml(user.position)}', '${escapeHtml(user.department)}', '${escapeHtml(user.role)}')" class="btn bg-yellow-500 hover:bg-yellow-600 text-white btn-sm shadow-sm mr-2">
+                            ✏️ แก้ไข
                         </button>
-                        <button onclick="deleteUser('${escapeHtml(user.username)}')" class="btn bg-red-500 hover:bg-red-600 text-white btn-xs px-2 py-1 shadow-sm">
-                            ลบ
+                        <button onclick="deleteUser('${escapeHtml(user.username)}')" class="btn btn-danger btn-sm shadow-sm">
+                            🗑️ ลบ
                         </button>
                     </td>
                 </tr>`).join('')}
             </tbody>
         </table>
     </div>`;
-}
-
-// เพิ่มหรือแก้ไขฟังก์ชัน openEditUserModal
-function openEditUserModal(username) {
-    if (!checkAdminAccess()) return;
-
-    const user = allUsersCache.find(u => u.username === username);
-    if (!user) {
-        showAlert('ผิดพลาด', 'ไม่พบข้อมูลผู้ใช้งาน');
-        return;
-    }
-
-    // 1. แสดง Internal ID (Username เดิม) ห้ามแก้
-    document.getElementById('edit-user-original-username').value = user.username;
-    document.getElementById('edit-user-internal-id').value = user.username;
-    
-    // 2. แสดง Login Name (ถ้าไม่มี ให้ใช้ username เดิมแสดงแทน)
-    // หมายเหตุ: ต้องมั่นใจว่า Backend ส่ง loginName มาด้วย (ดูข้อ 3)
-    document.getElementById('edit-user-loginname').value = user.loginName || user.username;
-
-    // 3. ข้อมูลอื่นๆ
-    document.getElementById('edit-user-fullname').value = user.fullName || '';
-    document.getElementById('edit-user-position').value = user.position || '';
-    document.getElementById('edit-user-department').value = user.department || '';
-    document.getElementById('edit-user-role').value = user.role || 'user';
-    document.getElementById('edit-user-password').value = ''; 
-
-    document.getElementById('edit-user-modal').classList.remove('hidden');
-}
-
-// เพิ่มหรือแก้ไขฟังก์ชัน handleEditUserSubmit
-async function handleEditUserSubmit(e) {
-    e.preventDefault();
-    if (!checkAdminAccess()) return;
-
-    // รับค่า ID (Key) และ Login Name (Value ใหม่)
-    const username = document.getElementById('edit-user-original-username').value;
-    const loginName = document.getElementById('edit-user-loginname').value.trim();
-    
-    if (!loginName) {
-        showAlert('ผิดพลาด', 'กรุณาระบุชื่อสำหรับเข้าสู่ระบบ');
-        return;
-    }
-
-    const payload = {
-        username: username,        // ส่ง Internal ID ไปเพื่อระบุแถว
-        loginName: loginName,      // ส่งชื่อล็อกอินใหม่ไปอัปเดต
-        fullName: document.getElementById('edit-user-fullname').value,
-        position: document.getElementById('edit-user-position').value,
-        department: document.getElementById('edit-user-department').value,
-        role: document.getElementById('edit-user-role').value,
-        newPassword: document.getElementById('edit-user-password').value
-    };
-
-    toggleLoader('edit-user-submit-button', true);
-
-    try {
-        // เรียกใช้ API adminUpdateUser (ต้องไปแก้ Backend ให้รับ loginName)
-        const result = await apiCall('POST', 'adminUpdateUser', payload);
-
-        if (result.status === 'success') {
-            showAlert('สำเร็จ', 'บันทึกข้อมูลเรียบร้อยแล้ว');
-            document.getElementById('edit-user-modal').classList.add('hidden');
-            await fetchAllUsers(); // โหลดตารางใหม่เพื่อแสดงผลล่าสุด
-        } else {
-            throw new Error(result.message || 'Server Error');
-        }
-    } catch (error) {
-        console.error(error);
-        showAlert('ผิดพลาด', 'ไม่สามารถบันทึกได้: ' + error.message);
-    } finally {
-        toggleLoader('edit-user-submit-button', false);
-    }
-}
-
-// --- ส่วนที่ 3: ฟังก์ชันบันทึกการแก้ไข (เพิ่มท้ายไฟล์) ---
-async function handleEditUserSubmit(e) {
-    e.preventDefault();
-    if (!checkAdminAccess()) return;
-
-    const username = document.getElementById('edit-user-original-username').value;
-    const fullName = document.getElementById('edit-user-fullname').value;
-    const position = document.getElementById('edit-user-position').value;
-    const department = document.getElementById('edit-user-department').value;
-    const role = document.getElementById('edit-user-role').value;
-    const newPassword = document.getElementById('edit-user-password').value;
-
-    const payload = {
-        action: 'adminUpdateUser', // ชื่อ Action ที่ต้องมีใน Google Apps Script
-        username: username,
-        fullName: fullName,
-        position: position,
-        department: department,
-        role: role,
-        newPassword: newPassword // ส่งไปเฉพาะถ้ามีการกรอก
-    };
-
-    toggleLoader('edit-user-submit-button', true);
-
-    try {
-        // 1. อัปเดตผ่าน API (Google Sheets)
-        // หมายเหตุ: ต้องมั่นใจว่าใน Google Apps Script มี case 'adminUpdateUser' รองรับ
-        // หรือถ้าใช้ api 'updateUserProfile' ต้องปรับให้ Admin ส่ง username ของคนอื่นไปแก้ได้
-        const result = await apiCall('POST', 'adminUpdateUser', payload);
-
-        if (result.status === 'success') {
-            
-            // 2. อัปเดต Firebase (ถ้าใช้งาน Hybrid)
-            if (typeof db !== 'undefined') {
-                try {
-                    // ค้นหา User ใน Firestore ด้วย Username
-                    const snapshot = await db.collection('users').where('username', '==', username).get();
-                    
-                    const updateData = {
-                        fullName, position, department, role,
-                        lastUpdatedByAdmin: firebase.firestore.FieldValue.serverTimestamp()
-                    };
-
-                    // ถ้ามีการเปลี่ยนรหัสผ่านและใช้ Firebase Auth อาจต้องใช้ Cloud Function 
-                    // แต่ในที่นี้เราอัปเดตข้อมูล Profile ใน Firestore ก่อน
-                    
-                    if (!snapshot.empty) {
-                        const batch = db.batch();
-                        snapshot.forEach(doc => {
-                            batch.set(doc.ref, updateData, { merge: true });
-                        });
-                        await batch.commit();
-                    } else {
-                        // ถ้าไม่เจอใน users collection อาจจะสร้างใหม่ หรือข้ามไป
-                        console.warn("User not found in Firestore collection, skipping DB update.");
-                    }
-                } catch (fbError) {
-                    console.error("Firebase Update Error:", fbError);
-                }
-            }
-
-            showAlert('สำเร็จ', 'แก้ไขข้อมูลผู้ใช้งานเรียบร้อยแล้ว');
-            document.getElementById('edit-user-modal').style.display = 'none';
-            
-            // รีโหลดข้อมูลตาราง
-            await fetchAllUsers();
-
-        } else {
-            throw new Error(result.message || 'Server Error');
-        }
-
-    } catch (error) {
-        console.error(error);
-        showAlert('ผิดพลาด', 'ไม่สามารถแก้ไขข้อมูลได้: ' + error.message);
-    } finally {
-        toggleLoader('edit-user-submit-button', false);
-    }
 }
 
 function renderAdminMemosList(memos) {
@@ -1101,11 +1110,22 @@ function openAddUserModal() {
     document.getElementById('register-modal').style.display = 'flex'; 
 }
 
+// ในไฟล์ admin.js ค้นหาฟังก์ชัน downloadUserTemplate แล้วแทนที่ด้วยโค้ดนี้
 function downloadUserTemplate() {
-    const ws = XLSX.utils.aoa_to_sheet([['Username', 'Password', 'FullName', 'Position', 'Department', 'Role']]);
+    const ws = XLSX.utils.aoa_to_sheet([
+        ['Username', 'Password', 'FullName', 'Position', 'Department', 'Role'],
+        ['teacher01', '123456', 'นายใจดี สอนดี', 'ครู', 'ภาษาไทย', 'user'],
+        ['head_math', '123456', 'นายสมชาย รักเรียน', 'ครู', 'คณิตศาสตร์', 'head'],
+        ['dep_acad', '123456', 'นายวิชา ชาญชำนาญ', 'รองผู้อำนวยการ', 'วิชาการ', 'deputy_acad'],
+        ['saraban1', '123456', 'นางสาวเอกสาร รวดเร็ว', 'เจ้าหน้าที่', 'งานสารบรรณ', 'saraban']
+    ]);
+    
+    // กำหนดความกว้างคอลัมน์ให้ดูง่ายขึ้น
+    ws['!cols'] = [{wch: 15}, {wch: 10}, {wch: 25}, {wch: 15}, {wch: 20}, {wch: 15}];
+    
     const wb = XLSX.utils.book_new(); 
     XLSX.utils.book_append_sheet(wb, ws, 'Template');
-    XLSX.writeFile(wb, 'user_template.xlsx');
+    XLSX.writeFile(wb, 'user_template_with_roles.xlsx');
 }
 
 async function handleUserImport(e) {
@@ -1140,8 +1160,6 @@ function openCommandApproval(requestId) {
 
 // แก้ไขในไฟล์ admin.js
 
-// ใน admin.js
-
 async function openDispatchModal(requestId) {
     if (!checkAdminAccess()) return;
     
@@ -1155,39 +1173,56 @@ async function openDispatchModal(requestId) {
         if(el) el.value = "๑";
     }
 
-    // สร้าง Dropdown เดือน (เหมือนเดิม)
+    // สร้าง Dropdown เดือน
     const thaiMonths = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
     const now = new Date();
     const monthSelect = document.getElementById('dispatch-month');
-    monthSelect.innerHTML = thaiMonths.map(m => `<option value="${m}" ${m === thaiMonths[now.getMonth()] ? 'selected' : ''}>${m}</option>`).join('');
-    document.getElementById('dispatch-year').value = now.getFullYear() + 543;
+    if(monthSelect) {
+        monthSelect.innerHTML = thaiMonths.map(m => `<option value="${m}" ${m === thaiMonths[now.getMonth()] ? 'selected' : ''}>${m}</option>`).join('');
+    }
+    const yearInput = document.getElementById('dispatch-year');
+    if(yearInput) yearInput.value = now.getFullYear() + 543;
 
     try {
         toggleLoader('admin-requests-list', true);
         
-        // 2. ดึงข้อมูลคำขอ
+        // 2. ดึงข้อมูลคำขอจาก Google Sheets (GAS)
         const result = await apiCall('GET', 'getDraftRequest', { requestId: requestId });
         let data = {};
         if (result.status === 'success') {
             data = result.data.data || result.data;
         }
-        if (data.dispatchVehicleType && data.dispatchVehicleType !== "") {
-            document.getElementById('dispatch-vehicle-type').value = data.dispatchVehicleType;
-            document.getElementById('dispatch-vehicle-id').value = data.dispatchVehicleId;
-        } else {
-            // Fallback: ถ้าไม่มี (กรณีอยู่ในจังหวัด หรือเป็นข้อมูลเก่า) ให้ลองแปลงจาก checkbox เดิม
-            let vType = 'รถตู้'; 
-            if (data.vehicleOption === 'gov') vType = 'รถบัสโรงเรียน'; 
-            else if (data.vehicleOption === 'private') vType = 'รถยนต์ส่วนตัว';
-            else if (data.vehicleOption === 'public') vType = 'รถโดยสารสาธารณะ';
-            
-            document.getElementById('dispatch-vehicle-type').value = vType;
-            document.getElementById('dispatch-vehicle-id').value = data.licensePlate || data.publicVehicleDetails || '-';
+
+        // ★★★ 2.5 ดึงข้อมูลที่ขาดหายไปจาก Firebase (สำคัญมาก: แก้ปัญหาที่พักไม่แสดง) ★★★
+        if (typeof db !== 'undefined') {
+            try {
+                const safeId = requestId.replace(/[\/\\:\.]/g, '-');
+                const fbDoc = await db.collection('requests').doc(safeId).get();
+                if (fbDoc.exists) {
+                    const fbData = fbDoc.data();
+                    // ดึงข้อมูลใหม่ๆ ที่อาจจะยังไม่มีใน Sheet มาทับ
+                    if (fbData.stayAt) data.stayAt = fbData.stayAt;
+                    if (fbData.dispatchVehicleType) data.dispatchVehicleType = fbData.dispatchVehicleType;
+                    if (fbData.dispatchVehicleId) data.dispatchVehicleId = fbData.dispatchVehicleId;
+                    
+                    // หากแอดมินเคยออกหนังสือส่งและแก้ไขไปแล้ว ให้ดึงข้อมูลล่าสุดมาแสดง
+                    if (fbData.dispatchMeta) {
+                        if (fbData.dispatchMeta.stayAt) data.stayAt = fbData.dispatchMeta.stayAt;
+                        if (fbData.dispatchMeta.studentCount !== undefined) data.studentCount = fbData.dispatchMeta.studentCount;
+                        if (fbData.dispatchMeta.teacherCount !== undefined) data.teacherCount = fbData.dispatchMeta.teacherCount;
+                    }
+                }
+            } catch(e) {
+                console.warn("Firebase fetch error in openDispatchModal:", e);
+            }
         }
+
         // 3. เติมข้อมูลพื้นฐานลงฟอร์ม
         document.getElementById('dispatch-purpose').value = data.purpose || '';
         document.getElementById('dispatch-location').value = data.location || '';
-        document.getElementById('dispatch-stay-at').value = data.stayAt || ''; // ที่พัก
+        
+        // ตอนนี้ข้อมูล 'ที่พัก' จะถูกแสดงอย่างถูกต้องแล้ว
+        document.getElementById('dispatch-stay-at').value = data.stayAt || ''; 
 
         // 4. จัดการวันที่และเวลา
         const toInputDate = (d) => d ? new Date(d).toISOString().split('T')[0] : '';
@@ -1196,13 +1231,12 @@ async function openDispatchModal(requestId) {
         document.getElementById('dispatch-time-start').value = data.startTime || '06:00';
         document.getElementById('dispatch-time-end').value = data.endTime || '18:00';
 
-        // 5. จัดการยานพาหนะ (Logic ใหม่: เช็คช่องแยกก่อน)
-        // ถ้า User กรอกข้อมูลในช่อง "ยานพาหนะสำหรับหนังสือส่ง" (dispatchVehicleType) มาให้ใช้ค่านี้ก่อน
+        // 5. จัดการยานพาหนะ
         if (data.dispatchVehicleType && data.dispatchVehicleType.trim() !== "") {
             document.getElementById('dispatch-vehicle-type').value = data.dispatchVehicleType;
             document.getElementById('dispatch-vehicle-id').value = data.dispatchVehicleId || '-';
         } else {
-            // Fallback: ถ้าไม่มี (เช่น อยู่ในจังหวัดเดียวกัน หรือเป็นข้อมูลเก่า) ให้แปลงจาก Checkbox เดิม
+            // Fallback: ถ้าไม่มีข้อมูลแบบใหม่ ให้แปลงจาก Checkbox เดิม
             let vType = 'รถตู้'; 
             if (data.vehicleOption === 'gov') vType = 'รถบัสโรงเรียน'; 
             else if (data.vehicleOption === 'private') vType = 'รถยนต์ส่วนตัว';
@@ -1213,29 +1247,34 @@ async function openDispatchModal(requestId) {
         }
 
         // 6. นับจำนวนครู/นักเรียนอัตโนมัติ
-        let attendees = [];
-        try { 
-            attendees = typeof data.attendees === 'string' ? JSON.parse(data.attendees) : (data.attendees || []); 
-        } catch(e) { 
-            attendees = []; 
-        }
-        
-        let sCount = 0; // นักเรียน
-        let tCount = 0; // ครู/บุคลากร
-        const isStudent = (pos) => (pos || '').trim().includes('นักเรียน');
-        
-        // เช็คผู้ขอ
-        if (isStudent(data.requesterPosition)) sCount++; else tCount++;
-        
-        // เช็คผู้ติดตาม (กันชื่อซ้ำกับผู้ขอ)
-        attendees.forEach(att => {
-            if ((att.name||'').trim() !== (data.requesterName||'').trim()) {
-                if (isStudent(att.position)) sCount++; else tCount++;
+        if (data.studentCount !== undefined && data.teacherCount !== undefined) {
+            document.getElementById('student-count').value = data.studentCount;
+            document.getElementById('teacher-count').value = data.teacherCount;
+        } else {
+            let attendees = [];
+            try { 
+                attendees = typeof data.attendees === 'string' ? JSON.parse(data.attendees) : (data.attendees || []); 
+            } catch(e) { 
+                attendees = []; 
             }
-        });
+            
+            let sCount = 0; // นักเรียน
+            let tCount = 0; // ครู/บุคลากร
+            const isStudent = (pos) => (pos || '').trim().includes('นักเรียน');
+            
+            // เช็คผู้ขอ
+            if (isStudent(data.requesterPosition)) sCount++; else tCount++;
+            
+            // เช็คผู้ติดตาม
+            attendees.forEach(att => {
+                if ((att.name||'').trim() !== (data.requesterName||'').trim()) {
+                    if (isStudent(att.position)) sCount++; else tCount++;
+                }
+            });
 
-        document.getElementById('student-count').value = sCount;
-        document.getElementById('teacher-count').value = tCount;
+            document.getElementById('student-count').value = sCount;
+            document.getElementById('teacher-count').value = tCount;
+        }
 
         // 7. เปิด Modal
         const modal = document.getElementById('dispatch-modal');
@@ -1712,4 +1751,98 @@ async function handleSaveAnnouncement(e) {
     } finally {
         toggleLoader('save-announcement-btn', false);
     }
+}
+// ในไฟล์ js/admin.js
+
+function openDispatchBookModal(requestId) {
+    console.log("Opening Dispatch Modal for:", requestId);
+
+    // 1. ค้นหาข้อมูลคำขอจาก Cache (ที่โหลดมาแล้วในตาราง)
+    const req = allRequestsCache.find(r => r.id === requestId || r.requestId === requestId);
+    
+    if (!req) {
+        alert('ไม่พบข้อมูลคำขอ กรุณารีโหลดหน้าเว็บ');
+        return;
+    }
+
+    // 2. เปิด Modal (ต้องตรงกับ ID ใน index.html)
+    const modal = document.getElementById('dispatch-modal');
+    if (modal) {
+        modal.classList.remove('hidden');
+        modal.style.display = 'flex'; // บังคับแสดงผล
+    } else {
+        console.error("❌ ไม่พบ Element ID: dispatch-modal ในหน้าเว็บ");
+        return;
+    }
+
+    // 3. เซ็ตค่าพื้นฐานลงในฟอร์ม
+    const setVal = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.value = (val !== undefined && val !== null) ? val : '';
+    };
+
+    setVal('dispatch-request-id', requestId);
+
+    // วันที่ปัจจุบัน (สำหรับ Default ปี/เดือน)
+    const today = new Date();
+    const thaiMonths = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+    
+    // สร้างตัวเลือกเดือน
+    const monthSelect = document.getElementById('dispatch-month');
+    if (monthSelect) {
+        monthSelect.innerHTML = "";
+        thaiMonths.forEach((m) => {
+            const option = document.createElement('option');
+            option.value = m;
+            option.textContent = m;
+            if (m === req.dispatchMonth || (!req.dispatchMonth && m === thaiMonths[today.getMonth()])) {
+                option.selected = true;
+            }
+            monthSelect.appendChild(option);
+        });
+    }
+
+    setVal('dispatch-year', req.dispatchYear || (today.getFullYear() + 543));
+    setVal('student-count', req.studentCount || '0');
+    setVal('teacher-count', req.teacherCount || '0');
+
+    // รายละเอียดอื่นๆ
+    setVal('dispatch-purpose', req.purpose || '');
+    setVal('dispatch-location', req.location || '');
+    setVal('dispatch-stay-at', req.stayAt || '-');
+    setVal('dispatch-vehicle-type', req.vehicleType || '-');
+    setVal('dispatch-vehicle-id', req.vehicleId || '-');
+
+    // วันที่และเวลาเดินทาง
+    setVal('dispatch-date-start', req.startDate || '');
+    setVal('dispatch-time-start', req.startTime || '06:00');
+    setVal('dispatch-date-end', req.endDate || '');
+    setVal('dispatch-time-end', req.endTime || '18:00');
+
+    // 4. เซ็ตค่า "สิ่งที่ส่งมาด้วย" (1-7)
+    // รองรับทั้งแบบแก้ไขได้ (input) และแบบดูอย่างเดียว (ถ้ายังไม่ได้แก้ HTML)
+    const setItem = (index, defaultText) => {
+        // ชื่อเอกสาร (item1, item2...)
+        const itemInput = document.getElementById(`dispatch-item-${index}`);
+        if (itemInput) {
+            // ถ้ามีข้อมูลใน DB ให้ใช้ค่าเดิม ถ้าไม่มีให้ใช้ค่า Default
+            const savedItem = req[`item${index}`];
+            itemInput.value = (savedItem && savedItem !== 'undefined') ? savedItem : defaultText;
+        }
+
+        // จำนวน (qty1, qty2...)
+        const qtyInput = document.getElementById(`qty${index}`); // ID ตาม HTML ของคุณคือ qty1, qty2
+        if (qtyInput) {
+            const savedQty = req[`qty${index}`];
+            qtyInput.value = (savedQty && savedQty !== 'undefined') ? savedQty : '๑';
+        }
+    };
+
+    setItem(1, "หนังสือเชิญ");
+    setItem(2, "คำสั่งโรงเรียน");
+    setItem(3, "รายชื่อนักเรียน");
+    setItem(4, "แผนที่เดินทาง");
+    setItem(5, "หนังสือขออนุญาต");
+    setItem(6, "กรมธรรม์");
+    setItem(7, "กำหนดการ");
 }

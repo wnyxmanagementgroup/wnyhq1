@@ -233,3 +233,24 @@ div#requests-list > div:hover, div#admin-requests-list > div:hover {
         content: attr(data-label);
     }
 }
+/* --- [ ADD-ON ] Signature & PDF Viewer CSS --- */
+
+#signature-pdf-container,
+#saraban-pdf-container {
+    /* ทำให้สามารถเลื่อนซ้าย-ขวาได้ถ้าเอกสารใหญ่เกินจอ */
+    overflow: auto;
+    /* ป้องกันขอบเด้งเวลาใช้ iPad */
+    -webkit-overflow-scrolling: touch; 
+}
+
+#signature-pdf-canvas,
+#saraban-pdf-canvas {
+    /* จำกัดความกว้างไม่ให้ล้นหน้าจอ (แต่ยังซูมได้) */
+    max-width: 100%;
+    height: auto !important;
+}
+
+#signature-pad-canvas {
+    /* สำคัญมาก! ป้องกันการขยับของหน้าจอเวลาเอานิ้วลากเซ็นชื่อ */
+    touch-action: none; 
+}

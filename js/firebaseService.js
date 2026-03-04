@@ -1,5 +1,6 @@
 /**
  * ฟังก์ชันหลักในการส่งคำขอไปราชการ (Hybrid Mode)
+ * แก้ไข: อัปโหลดไฟล์ไปที่ Google Drive (ผ่าน GAS) แทน Firebase Storage
  */
 async function submitRequestWithHybrid(formData) {
     const tempId = Date.now().toString(); // ID ชั่วคราวก่อนได้เลข บค. จาก GAS
@@ -12,20 +13,40 @@ async function submitRequestWithHybrid(formData) {
             // สมมติใช้ template_memo.docx สำหรับบันทึกข้อความ
             const pdfBlob = await generatePdfFromCloudRun('template_memo.docx', formData);
             
-            // อัปโหลดไฟล์ที่ได้ไปยัง Storage ทันที
+            // [แก้ไข] เปลี่ยนจาก uploadToStorage (Firebase) เป็น uploadGeneratedFile (GAS/Drive)
+            console.log("📤 Uploading to Google Drive via GAS...");
+            
+            // แปลง Blob เป็น Base64 เพื่อส่งผ่าน API
+            const base64Data = await blobToBase64(pdfBlob);
             const fileName = `memo_pending_${tempId}.pdf`;
-            preGeneratedUrl = await uploadToStorage(pdfBlob, `requests/temp/${fileName}`);
-            console.log("✅ Cloud Run Success! File URL:", preGeneratedUrl);
+
+            // เรียก GAS ให้บันทึกไฟล์ลง Drive
+            const uploadRes = await apiCall('POST', 'uploadGeneratedFile', {
+                data: base64Data,
+                filename: fileName,
+                mimeType: 'application/pdf',
+                username: formData.username || 'system',
+                folderType: 'temp' // (Optional) ถ้าฝั่ง GAS รองรับการแยกโฟลเดอร์
+            });
+
+            if (uploadRes.status === 'success') {
+                preGeneratedUrl = uploadRes.url;
+                console.log("✅ Drive Upload Success! File URL:", preGeneratedUrl);
+            } else {
+                throw new Error("GAS Upload Failed: " + uploadRes.message);
+            }
+
         } catch (e) {
-            console.warn("⚠️ Cloud Run Failed, will fallback to GAS generation:", e.message);
+            console.warn("⚠️ Cloud Run/Upload Failed, will fallback to GAS generation:", e.message);
             // ถ้าตรงนี้พัง preGeneratedUrl จะเป็น null ซึ่งจะไปเปิด Trigger ให้ GAS สร้างเองใน Step ถัดไป
         }
 
         // --- 2. ส่งข้อมูลไปที่ GAS เพื่อบันทึกเลขที่ (ID) และลง Google Sheet ---
-        // ส่ง preGeneratedUrl ไปด้วย ถ้ามีค่า GAS จะไม่สร้างไฟล์ซ้ำ
+        // ส่ง preGeneratedUrl (ที่เป็นลิงก์ Drive) ไปด้วย
         const payload = {
             ...formData,
             preGeneratedPdfUrl: preGeneratedUrl, 
+            fileUrl: preGeneratedUrl, // ส่งไปสำรอง
             action: 'saveRequestAndGeneratePdf'
         };
 
@@ -34,12 +55,17 @@ async function submitRequestWithHybrid(formData) {
         if (result.status === 'success') {
             const finalId = result.data.id;
             const docId = finalId.replace(/[\/\\\:\.]/g, '-');
+            
+            // ใช้ URL ที่ดีที่สุด (จาก Drive ที่เราอัป หรือจากที่ GAS สร้างให้ใหม่)
+            const finalUrl = result.data.pdfUrl || result.data.fileUrl || preGeneratedUrl;
 
             // --- 3. บันทึกข้อมูลลง Firestore (เพื่อให้หน้าเว็บเห็นปุ่มดาวน์โหลดทันที) ---
             await db.collection('requests').doc(docId).set({
                 ...formData,
                 id: finalId,
-                pdfUrl: result.data.pdfUrl, // นี่คือ URL จาก Cloud Run หรือ GAS (Fallback)
+                pdfUrl: finalUrl,
+                fileUrl: finalUrl, // บันทึกให้ครบทุก field กันเหนียว
+                memoPdfUrl: finalUrl,
                 docUrl: result.data.docUrl,
                 status: 'กำลังดำเนินการ',
                 timestamp: firebase.firestore.FieldValue.serverTimestamp()
@@ -58,8 +84,10 @@ async function submitRequestWithHybrid(formData) {
 
 /**
  * ปรับปรุงการสร้างคำสั่ง (Command) ให้เป็นแบบ Serial Success
+ * แก้ไข: อัปโหลดไฟล์ไปที่ Google Drive (ผ่าน GAS) แทน Firebase Storage
  */
 async function generateCommandHybrid(data) {
+    if (!data.id) throw new Error("ไม่พบรหัสเอกสาร (data.id) สำหรับการสร้างคำสั่ง");
     const docId = data.id.replace(/[\/\\\:\.]/g, '-');
     
     try {
@@ -74,14 +102,27 @@ async function generateCommandHybrid(data) {
             }
 
             const finalPdfBlob = await generatePdfFromCloudRun(templateName, data);
+            
+            // [แก้ไข] เปลี่ยนจาก uploadToStorage เป็น uploadGeneratedFile (Drive)
             const filename = `command_${docId}_${Date.now()}.pdf`;
-            cloudRunUrl = await uploadToStorage(finalPdfBlob, `generated_docs/${docId}/${filename}`);
+            const base64Data = await blobToBase64(finalPdfBlob);
+            
+            const uploadRes = await apiCall('POST', 'uploadGeneratedFile', {
+                data: base64Data,
+                filename: filename,
+                mimeType: 'application/pdf',
+                username: data.username || 'admin'
+            });
+
+            if (uploadRes.status === 'success') {
+                cloudRunUrl = uploadRes.url;
+            }
+
         } catch (e) {
-            console.warn("Cloud Run Command failed, letting GAS handle it.");
+            console.warn("Cloud Run Command failed, letting GAS handle it.", e);
         }
 
-        // 2. เรียก GAS: ส่ง cloudRunUrl ไปด้วย 
-        // ถ้า cloudRunUrl มีค่า GAS จะข้ามขั้นตอนสร้าง PDF และบันทึก URL นี้ลง Sheet เลย
+        // 2. เรียก GAS: ส่ง cloudRunUrl (Drive Link) ไปด้วย 
         const gasPayload = {
             ...data,
             preGeneratedPdfUrl: cloudRunUrl,
@@ -91,10 +132,14 @@ async function generateCommandHybrid(data) {
         const gasResult = await apiCall('POST', 'generateCommand', gasPayload);
 
         // 3. บันทึกผลลัพธ์ลง Firestore หลังทุกอย่างใน GAS เสร็จสิ้น
+        const gasData = (gasResult && gasResult.data) ? gasResult.data : {};
+        const finalUrl = gasData.pdfUrl || cloudRunUrl; // ใช้ค่าจาก GAS (ถ้ามี) หรือค่าที่เราอัปเอง
+
         const updateData = {
             commandStatus: 'เสร็จสิ้น',
-            commandBookUrl: gasResult.data.pdfUrl, // ใช้ URL จาก GAS (ซึ่งอาจจะรับมาจาก Cloud Run อีกที)
-            commandDocUrl: gasResult.data.docUrl || '',
+            commandBookUrl: finalUrl,
+            commandPdfUrl: finalUrl, // เพิ่ม field นี้ด้วย
+            commandDocUrl: gasData.docUrl || '',
             lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
         };
 
@@ -108,4 +153,18 @@ async function generateCommandHybrid(data) {
         }, { merge: true });
         throw error;
     }
+}
+
+// Helper Function: แปลง Blob เป็น Base64 (เผื่อในไฟล์นี้ยังไม่มี)
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+        const parts = reader.result ? reader.result.split(',') : [];
+        const base64String = parts.length > 1 ? parts[1] : '';
+        resolve(base64String);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
 }

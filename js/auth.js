@@ -1,14 +1,11 @@
 // --- AUTH FUNCTIONS (HYBRID SYSTEM) ---
-
-// --- แก้ไขในไฟล์ js/auth.js ---
-
-// --- นำไปแทนที่ฟังก์ชัน handleLogin เดิมในไฟล์ js/auth.js ---
+// --- แก้ไขฟังก์ชัน handleLogin ---
 
 async function handleLogin(e) {
     e.preventDefault();
     
-    const usernameInput = document.getElementById('username').value.trim();
-    const password = document.getElementById('password').value; // รหัสผ่านจริงที่ user พิมพ์
+    const usernameInput = document.getElementById('username').value.trim(); // สิ่งที่พิมพ์ (อาจเป็น LoginName)
+    const password = document.getElementById('password').value;
 
     if (!usernameInput || !password) {
         showAlert('ผิดพลาด', 'กรุณากรอกชื่อผู้ใช้และรหัสผ่าน');
@@ -19,111 +16,56 @@ async function handleLogin(e) {
     document.getElementById('login-error').classList.add('hidden');
     
     try {
-        console.log('Attempting login for:', usernameInput);
-        
-        // แปลง Username เป็น Email
         const email = `${usernameInput}@wny.app`; 
-        
-        // ★★★ แปลงรหัสผ่านสำหรับ Firebase (ถ้าสั้นกว่า 6 ตัว ให้เติม 0) ★★★
         const firebasePassword = adjustPasswordForFirebase(password);
         
         let firebaseUser = null;
         let userData = null;
 
-        // -----------------------------------------------------
-        // 1. ลอง Login ผ่าน Firebase Auth (ใช้รหัสที่ปรับแล้ว)
-        // -----------------------------------------------------
+        // 1. ลอง Login Firebase
         try {
             if (typeof firebase !== 'undefined') {
-                // ใช้ firebasePassword ในการล็อกอิน
                 const userCredential = await firebase.auth().signInWithEmailAndPassword(email, firebasePassword);
                 firebaseUser = userCredential.user;
-                console.log("⚡ Logged in via Firebase (Fast)");
             }
-        } catch (firebaseError) {
-            // ถ้า User Not Found หรือรหัสผิด (ใน Firebase) ให้ข้ามไปเช็คกับ GAS
-            if (firebaseError.code !== 'auth/user-not-found' && firebaseError.code !== 'auth/wrong-password') {
-                console.warn("Firebase Login Warning:", firebaseError.message);
-            }
-        }
+        } catch (firebaseError) { /* ข้าม */ }
 
-        // -----------------------------------------------------
-        // 2. ถ้าไม่เจอใน Firebase -> ไปเช็คกับระบบเก่า (GAS)
-        // -----------------------------------------------------
-        if (!firebaseUser) {
-            console.log("🐌 User not found in Firebase, verifying with GAS...");
+       // 2. เรียกตรวจสอบกับ Google Sheet (Hybrid Check)
+        // เพื่อดึง "ตัวตนที่แท้จริง" (Real Identity)
+        const result = await apiCall('POST', 'verifyCredentials', { username: usernameInput, password: password });
+
+        if (result.status === 'success') {
+            const realUser = result.user; // ข้อมูลที่ถูกต้องจาก Sheet
+
+            // ★★★ แก้ไข: ใช้ ID จริง (realUser.username) แทนสิ่งที่พิมพ์ (usernameInput) ★★★
+            // เช่น พิมพ์ 'kong' แต่ realUser.username คือ 'admin' -> เราจะใช้ 'admin'
             
-            // ★ ส่งรหัสผ่าน "ต้นฉบับ" (password) ไปเช็คกับ Google Sheet
-            const result = await apiCall('POST', 'verifyCredentials', { 
-                username: usernameInput, 
-                password: password 
-            });
-
-            if (result.status === 'success') {
-                userData = result.user;
-
-                // Lazy Migration: สร้างบัญชี Firebase ทันที
-                if (typeof firebase !== 'undefined') {
-                    try {
-                        console.log("🚀 Migrating user to Firebase Auth...");
-                        
-                        // ★ สร้างบัญชีใหม่ด้วยรหัสที่ปรับแล้ว (firebasePassword)
-                        const newUserCred = await firebase.auth().createUserWithEmailAndPassword(email, firebasePassword);
-                        firebaseUser = newUserCred.user;
-
-                        // บันทึกข้อมูล Profile ลง Firestore
-                        await firebase.firestore().collection('users').doc(firebaseUser.uid).set({
-                            username: usernameInput,
-                            fullName: userData.fullName || usernameInput,
-                            position: userData.position || 'User',
-                            role: userData.role || 'user',
-                            department: userData.department || '',
-                            email: userData.email || '',
-                            migratedAt: firebase.firestore.FieldValue.serverTimestamp()
-                        }, { merge: true });
-
-                    } catch (migrationError) {
-                        console.error("Migration Failed:", migrationError);
-                        // ถ้าสร้างไม่สำเร็จ (เช่น Email ซ้ำในระบบแต่ Password ผิด) ก็ปล่อยผ่านให้ใช้ Session GAS ไปก่อน
-                    }
-                }
-            } else {
-                throw new Error(result.message || 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
-            }
-        }
-
-        // -----------------------------------------------------
-        // 3. Login สำเร็จ (ไม่ว่าจะทางไหน) -> เข้าสู่ระบบ
-        // -----------------------------------------------------
-        if (firebaseUser || userData) {
-            let finalUserObj = userData;
-
-            if (!finalUserObj && firebaseUser) {
-                // ดึงข้อมูลล่าสุดจาก Firestore (กรณี Login ผ่าน Firebase)
-                const doc = await firebase.firestore().collection('users').doc(firebaseUser.uid).get();
-                if (doc.exists) {
-                    finalUserObj = doc.data();
-                } else {
-                    finalUserObj = { username: usernameInput, role: 'user' }; 
-                }
+            // อัปเดตข้อมูลลง Firestore ให้ตรงกัน
+            if (typeof firebase !== 'undefined' && firebase.auth().currentUser) {
+                const uid = firebase.auth().currentUser.uid;
+                await firebase.firestore().collection('users').doc(uid).set({
+                    username: realUser.username, // ใช้ ID หลัก
+                    loginName: realUser.loginName || usernameInput, // เก็บชื่อล็อกอินไว้ดูต่างหาก
+                    fullName: realUser.fullName,
+                    role: realUser.role,
+                    lastLogin: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
             }
 
-            sessionStorage.setItem('currentUser', JSON.stringify(finalUserObj));
-            window.currentUser = finalUserObj;
+            // บันทึกลง Session Browser
+            sessionStorage.setItem('currentUser', JSON.stringify(realUser));
+            window.currentUser = realUser;
             
-            initializeUserSession(finalUserObj);
+            // ... (Code เปลี่ยนหน้าจอเดิม) ...
+            initializeUserSession(realUser);
             showMainApp();
-
-            // เรียกประกาศให้เด้งขึ้นมาทันที
-            checkAndShowAnnouncement();
-
-            // เปลี่ยนหน้าไป Dashboard
-            await switchPage('dashboard-page');
+            // ...
+        } else {
+            throw new Error(result.message || 'รหัสผ่านไม่ถูกต้อง');
         }
 
     } catch (error) {
-        console.error('Login error:', error);
-        document.getElementById('login-error').textContent = error.message || 'เกิดข้อผิดพลาด';
+        document.getElementById('login-error').textContent = error.message;
         document.getElementById('login-error').classList.remove('hidden');
     } finally {
         toggleLoader('login-button', false);
@@ -170,20 +112,23 @@ function initializeUserSession(user) {
     if (posEl) posEl.textContent = user.position || (user.role === 'admin' ? 'ผู้ดูแลระบบ' : 'ผู้ใช้งานทั่วไป');
     
     // 3. จัดการเมนู Admin (แก้ไขให้เรียก ID ที่ถูกต้องใน HTML)
-    const adminBtnCommand = document.getElementById('admin-nav-command');
-    const adminBtnUsers = document.getElementById('admin-nav-users');
-    const adminActions = document.getElementById('admin-actions'); // ปุ่ม Sync
+    const adminBtnCommand      = document.getElementById('admin-nav-command');
+    const adminBtnUsers        = document.getElementById('admin-nav-users');
+    const adminBtnApprovalLinks = document.getElementById('admin-nav-approval-links');
+    const adminActions         = document.getElementById('admin-actions'); // ปุ่ม Sync
 
     const isAdmin = String(user.role).toLowerCase() === 'admin';
 
     if (isAdmin) {
-        if (adminBtnCommand) adminBtnCommand.classList.remove('hidden');
-        if (adminBtnUsers) adminBtnUsers.classList.remove('hidden');
-        if (adminActions) adminActions.classList.remove('hidden');
+        if (adminBtnCommand)       adminBtnCommand.classList.remove('hidden');
+        if (adminBtnUsers)         adminBtnUsers.classList.remove('hidden');
+        if (adminBtnApprovalLinks) adminBtnApprovalLinks.classList.remove('hidden');
+        if (adminActions)          adminActions.classList.remove('hidden');
     } else {
-        if (adminBtnCommand) adminBtnCommand.classList.add('hidden');
-        if (adminBtnUsers) adminBtnUsers.classList.add('hidden');
-        if (adminActions) adminActions.classList.add('hidden');
+        if (adminBtnCommand)       adminBtnCommand.classList.add('hidden');
+        if (adminBtnUsers)         adminBtnUsers.classList.add('hidden');
+        if (adminBtnApprovalLinks) adminBtnApprovalLinks.classList.add('hidden');
+        if (adminActions)          adminActions.classList.add('hidden');
     }
 }
 
@@ -268,6 +213,16 @@ async function handlePasswordUpdate(e) {
 
 function handleRegister(e) {
     e.preventDefault();
+    // 🔒 1. เพิ่มการบล็อก: ตรวจสอบว่ามี Admin ล็อกอินอยู่หรือไม่
+    const currentUser = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
+    if (!currentUser || currentUser.role !== 'admin') {
+        showAlert('ระบบปิดรับสมัคร', 'ระบบไม่อนุญาตให้สมัครสมาชิกด้วยตนเอง กรุณาติดต่อผู้ดูแลระบบเพื่อเพิ่มบัญชีครับ');
+        
+        // ปิดหน้าต่าง Modal บังคับกลับไปหน้าเดิม
+        const regModal = document.getElementById('register-modal');
+        if (regModal) regModal.style.display = 'none';
+        return; // หยุดการทำงานของฟังก์ชันทันที
+    }
     const password = document.getElementById('reg-password').value;
     const confirmPassword = document.getElementById('reg-confirm-password').value;
 
@@ -276,6 +231,10 @@ function handleRegister(e) {
         return;
     }
 
+    // --- ส่วนที่แก้ไข: ดึงค่า Role จาก Dropdown (ถ้ามี) ถ้าไม่มีให้เป็น 'user' ---
+    const roleDropdown = document.getElementById('reg-role');
+    const userRole = roleDropdown ? roleDropdown.value : 'user';
+
     const formData = {
         username: document.getElementById('reg-username').value.trim(),
         password: password,
@@ -283,7 +242,7 @@ function handleRegister(e) {
         email: document.getElementById('reg-email').value.trim(),
         position: document.getElementById('reg-position').value,
         department: document.getElementById('reg-department').value,
-        role: 'user'
+        role: userRole // เปลี่ยนจากการฟิกซ์ 'user' เป็นค่าที่เลือกจาก Dropdown
     };
 
     toggleLoader('register-submit-button', true);
@@ -291,9 +250,17 @@ function handleRegister(e) {
     apiCall('POST', 'registerUser', formData)
         .then(async result => {
             if (result.status === 'success') {
-                showAlert('สำเร็จ', 'ลงทะเบียนเรียบร้อยแล้ว กรุณาเข้าสู่ระบบ');
+                showAlert('สำเร็จ', 'ลงทะเบียนเรียบร้อยแล้ว');
                 document.getElementById('register-modal').style.display = 'none';
                 document.getElementById('register-form').reset();
+                
+                // --- ส่วนที่เพิ่ม: ถ้า Admin เป็นคนเพิ่มผู้ใช้ ให้รีเฟรชตารางผู้ใช้ทันที ---
+                const adminUsersPage = document.getElementById('admin-users-page');
+                if (adminUsersPage && !adminUsersPage.classList.contains('hidden')) {
+                    if (typeof fetchAllUsers === 'function') {
+                        fetchAllUsers();
+                    }
+                }
             } else {
                 showAlert('ผิดพลาด', result.message);
             }

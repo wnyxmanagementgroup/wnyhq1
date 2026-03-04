@@ -41,11 +41,8 @@
                         </button>
                         <p id="login-error" class="text-red-500 text-center mt-4 hidden bg-red-50 p-2 rounded"></p>
                     </form>
-                    <p class="text-center mt-4 text-sm text-gray-600 hidden">
-                        ยังไม่มีบัญชี? <button type="button" id="show-register-modal-button" class="font-semibold text-indigo-600 hover:text-indigo-500">สมัครใช้งานที่นี่</button>
-                    </p>
                     <p class="text-center mt-4">
-                        <button type="button" id="show-forgot-password-modal" class="font-semibold text-indigo-600 hover:text-indigo-500 text-sm">ลืมรหัสผ่าน?</button>
+                        <button type="button" id="show-forgot-password-modal" class="font-semibold text-indigo-600 hover:text-indigo-500 text-sm">Usernameใช้แบบเดียวกับระบบ School-mis</button>
                     </p>
                 </div>
             </div>
@@ -62,7 +59,7 @@
             <h4 class="text-lg font-bold text-gray-800 mb-2">อย่าลืมส่งบันทึกข้อความ!</h4>
             <p class="text-gray-600 mb-4 text-sm">
                 เมื่อท่านสร้างรายการในระบบแล้ว<br>
-                กรุณา <span class="text-red-500 font-bold underline">ปริ้นเอกสาร</span> และส่งที่ครูกีรติ<br>
+                กรุณา <span class="text-red-500 font-bold underline">ปริ้นเอกสาร</span> และส่งงานสารบรรณ<br>
                 หรืออัปโหลดไฟล์ที่ลงนามแล้วเข้าระบบทุกครั้ง
             </p>
             
@@ -208,7 +205,11 @@
                     <h3 class="font-bold text-indigo-700">ร่างคำขอไปราชการ</h3>
                     <p class="text-xs text-gray-500">สร้างบันทึกข้อความ</p>
                 </button>
-
+<button onclick="switchPage('approval-page')" class="nav-button w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all mb-2 text-gray-600" data-target="approval-page" id="nav-approval-inbox" style="display: none;">
+    <span class="text-xl">📥</span>
+    <span class="font-medium">เอกสารรอลงนาม</span>
+    <span id="approval-badge" class="ml-auto bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full hidden">0</span>
+</button>
                 <button data-target="send-memo-page" id="nav-send-memo" class="nav-button p-4 text-center bg-white rounded-lg shadow hover:bg-teal-50 transition">
                     <h3 class="font-bold text-teal-700">ส่งบันทึก</h3>
                     <p class="text-xs text-gray-500">แนบไฟล์/ส่งงาน</p>
@@ -233,10 +234,18 @@
                     <h3 class="font-bold text-purple-700">จัดการบันทึก/คำสั่ง</h3>
                     <p class="text-xs text-gray-500">สำหรับผู้ดูแลระบบ</p>
                 </button>
+                
 
                 <button id="admin-nav-users" data-target="admin-users-page" class="nav-button p-4 text-center bg-white rounded-lg shadow hover:bg-indigo-50 transition hidden">
                     <h3 class="font-bold text-red-700">จัดการผู้ใช้</h3>
                     <p class="text-xs text-gray-500">ผู้ใช้ทั้งหมด</p>
+                </button>
+
+                <button id="admin-nav-approval-links" data-target="admin-approval-links-page"
+                    onclick="loadApprovalLinkManagement()"
+                    class="nav-button p-4 text-center bg-white rounded-lg shadow hover:bg-blue-50 transition hidden">
+                    <h3 class="font-bold text-blue-700">🔗 จัดการลิงก์ลงนาม</h3>
+                    <p class="text-xs text-gray-500">สร้างลิงก์สำหรับผู้อนุมัติ</p>
                 </button>
             </div>
             <div id="admin-actions" class="mb-4 flex gap-2">
@@ -266,7 +275,24 @@
     </div>
 
 </div>
+<div id="approval-page" class="page-view hidden fade-in">
+    <div class="flex justify-between items-end mb-6">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-800 tracking-tight">📥 เอกสารรอการลงนาม</h1>
+            <p class="text-gray-500 text-sm mt-1">รายการเอกสารที่รอให้คุณตรวจสอบและประทับลายเซ็น</p>
+        </div>
+        <button onclick="loadPendingApprovals()" class="btn bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 shadow-sm flex items-center gap-2">
+            <span>🔄</span> รีเฟรชข้อมูล
+        </button>
+    </div>
 
+    <div id="approval-list-container" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="col-span-full flex flex-col items-center justify-center py-12">
+            <div class="loader mb-4"></div>
+            <p class="text-gray-500">กำลังตรวจสอบเอกสารรอลงนาม...</p>
+        </div>
+    </div>
+</div>
                 <div id="form-page" class="page-view hidden">
                      <form id="request-form">
                           <input type="hidden" id="form-request-id">
@@ -398,6 +424,16 @@
                                     </select>
                                 </div>
                                 <div><label for="form-head-name" class="form-label">ชื่อหัวหน้ากลุ่มสาระ / หัวหน้างาน</label><input type="text" id="form-head-name" class="form-input bg-gray-200" readonly></div>
+                                <div class="mt-5 border-t border-gray-200 pt-4">
+                                    <label class="form-label font-bold text-gray-700 flex items-center gap-2">
+                                        <span>✍️</span> ลงลายมือชื่อผู้ขอ (ไม่บังคับ)
+                                    </label>
+                                    <p class="text-xs text-gray-500 mb-2">เซ็นชื่อในกรอบด้านล่าง ระบบจะนำไปประทับบนเอกสารให้อัตโนมัติ</p>
+                                    <div class="border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 overflow-hidden" style="touch-action: none;">
+                                        <canvas id="form-sig-canvas" class="w-full cursor-crosshair" style="height: 120px;"></canvas>
+                                    </div>
+                                    <button type="button" id="form-sig-clear-btn" class="mt-2 text-xs text-gray-500 hover:text-red-500 underline">ล้างลายเซ็น</button>
+                                </div>
                          </fieldset>
                          <div class="text-center mt-10 border-t pt-6 border-gray-200">
                               <button type="submit" id="submit-request-button" class="btn btn-primary w-full sm:w-auto text-lg">
@@ -406,13 +442,28 @@
                              </button>
                          </div>
                     </form>
-                      <div id="form-result" class="hidden mt-6 p-6 text-center">
-                          <h3 id="form-result-title" class="font-bold text-lg"></h3>
-                          <p id="form-result-message" class="mt-2 text-gray-700"></p>
-                            <div class="flex justify-center flex-wrap gap-4 mt-4">
-                                <a id="form-result-link" href="#" target="_blank" class="btn btn-success">เปิดไฟล์ PDF</a>
-                             </div>
-                      </div>
+                      <div id="form-result" class="hidden mt-6 p-6 text-center bg-gray-50 rounded-xl border border-gray-200 shadow-inner">
+    <div class="text-5xl mb-2">🎉</div>
+    <h3 id="form-result-title" class="font-bold text-xl text-green-700"></h3>
+    <p id="form-result-message" class="mt-2 text-gray-600 mb-6"></p>
+    
+    <div class="flex justify-center flex-wrap gap-4 mt-4 border-t pt-6 border-gray-300">
+        <a id="btn-print-doc" href="#" target="_blank" class="btn bg-gray-600 text-white hover:bg-gray-700 shadow-md flex items-center gap-2 px-6 py-3">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+            พิมพ์เอกสาร (ยังไม่เซ็น)
+        </a>
+        
+        <button type="button" id="btn-esign-doc" class="btn bg-blue-600 text-white hover:bg-blue-700 shadow-lg flex items-center gap-2 px-6 py-3 transform transition hover:scale-105">
+            <span class="text-xl">✍️</span>
+            ลงลายมือชื่ออิเล็กทรอนิกส์
+        </button>
+
+        <button type="button" onclick="goToDashboardFromResult()" class="btn bg-gray-200 text-gray-700 hover:bg-gray-300 flex items-center gap-2 px-6 py-3">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+            กลับหน้าหลัก
+        </button>
+    </div>
+</div>
                 </div>
 </div> 
 
@@ -582,7 +633,21 @@
                                 <input type="text" id="edit-head-name" class="form-input bg-gray-200" readonly>
                             </div>
                         </fieldset>
-                        
+
+                        <!-- ลายเซ็นผู้ขอสำหรับการแก้ไข -->
+                        <div class="border border-gray-200 rounded-lg p-4 mb-4 mt-2">
+                            <p class="font-bold text-gray-700 mb-2 flex items-center gap-2"><span>✍️</span> ลงลายมือชื่อผู้ขอ</p>
+                            <div id="edit-existing-sig-preview" class="hidden mb-3 p-2 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-3">
+                                <span class="text-sm text-amber-700 whitespace-nowrap">ลายเซ็นเดิม:</span>
+                                <img id="edit-existing-sig-img" src="" class="h-8 border rounded bg-white">
+                                <span class="text-xs text-gray-500">(วาดใหม่เพื่อเปลี่ยน หรือปล่อยว่างเพื่อใช้ลายเซ็นเดิม)</span>
+                            </div>
+                            <div class="border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 overflow-hidden" style="touch-action: none;">
+                                <canvas id="edit-sig-canvas" class="w-full cursor-crosshair" style="height: 120px;"></canvas>
+                            </div>
+                            <button type="button" id="edit-sig-clear-btn" class="mt-2 text-xs text-gray-500 hover:text-red-500 underline">ล้างลายเซ็น</button>
+                        </div>
+
                         <div class="flex justify-center gap-4 mt-10 border-t pt-6 border-gray-200">
 
                             <button type="button" id="generate-document-button" class="btn btn-primary text-lg">
@@ -774,6 +839,34 @@
         </div>
     </div>
 </div>
+                <!-- ===== หน้าจัดการลิงก์ลงนาม (Admin Only) ===== -->
+                <div id="admin-approval-links-page" class="page-view hidden fade-in">
+                    <div class="flex justify-between items-end mb-6">
+                        <div>
+                            <h1 class="text-2xl font-bold text-gray-800 tracking-tight">🔗 จัดการลิงก์ลงนาม</h1>
+                            <p class="text-gray-500 text-sm mt-1">สร้างลิงก์พิเศษให้ผู้ลงนามแต่ละขั้น โดยผู้รับไม่ต้องเข้าสู่ระบบ</p>
+                        </div>
+                        <button onclick="loadApprovalLinkManagement()"
+                            class="btn bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 shadow-sm flex items-center gap-2">
+                            <span>🔄</span> รีเฟรช
+                        </button>
+                    </div>
+
+                    <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6 text-sm text-blue-800">
+                        <strong>📌 วิธีใช้:</strong>
+                        กดปุ่ม <span class="font-bold">"🔗 สร้างลิงก์"</span> สำหรับเอกสารที่ต้องการ
+                        แล้วคัดลอกส่งให้ผู้ลงนามผ่าน <strong>Line / Email</strong><br>
+                        ลิงก์ใช้ได้ <strong>ครั้งเดียวภายใน 7 วัน</strong> ผู้รับไม่ต้องเข้าสู่ระบบ
+                    </div>
+
+                    <div id="approval-links-container" class="space-y-4">
+                        <div class="flex justify-center py-10">
+                            <div class="loader"></div>
+                        </div>
+                    </div>
+                </div>
+                <!-- ================================================= -->
+
                 <div id="admin-users-page" class="page-view hidden">
                     <h2 class="text-2xl font-bold mb-6">จัดการผู้ใช้</h2>
                     
@@ -972,7 +1065,28 @@
                 <label for="reg-email" class="form-label">อีเมล (สำหรับการแจ้งเตือน)</label>
                 <input type="email" id="reg-email" class="form-input" required>
             </div>
-            
+<div class="mb-6 bg-blue-50 p-4 rounded-lg border border-blue-200">
+    <label for="reg-role" class="form-label font-bold text-blue-800">สิทธิ์การใช้งาน (Role)</label>
+    <select id="reg-role" class="form-input bg-white" required>
+        <option value="user">1. User (ครู/ผู้ใช้งานทั่วไป)</option>
+        <optgroup label="2. หัวหน้ากลุ่มสาระการเรียนรู้">
+            <option value="head_thai"> - หัวหน้ากลุ่มสาระฯ ภาษาไทย</option>
+            <option value="head_foreign"> - หัวหน้ากลุ่มสาระฯ ภาษาต่างประเทศ</option>
+            <option value="head_science"> - หัวหน้ากลุ่มสาระฯ วิทยาศาสตร์และเทคโนโลยี</option>
+            <option value="head_art"> - หัวหน้ากลุ่มสาระฯ ศิลปะ</option>
+            <option value="head_social"> - หัวหน้ากลุ่มสาระฯ สังคมศึกษาฯ</option>
+            <option value="head_health"> - หัวหน้ากลุ่มสาระฯ สุขศึกษาและพลศึกษา</option>
+            <option value="head_career"> - หัวหน้ากลุ่มสาระฯ การงานอาชีพ</option>
+            <option value="head_math"> - หัวหน้ากลุ่มสาระฯ คณิตศาสตร์</option>
+        </optgroup>
+        <option value="deputy_acad">3. รองผู้อำนวยการกลุ่มบริหารวิชาการ</option>
+        <option value="deputy_personnel">4. รองผู้อำนวยการกลุ่มบริหารงานบุคคล</option>
+        <option value="saraban">5. สารบรรณโรงเรียน</option>
+        <option value="director">6. ผู้อำนวยการโรงเรียน</option>
+        <option value="admin">7. Admin (ผู้ดูแลระบบ)</option>
+    </select>
+    <p class="text-xs text-blue-600 mt-2">* ระบบจะแสดงเมนู "เอกสารรอลงนาม" ตามสิทธิ์ที่เลือกที่นี่โดยอัตโนมัติ</p>
+</div>
             <div class="flex justify-end gap-4">
                 <button type="button" id="register-modal-close-button2" class="btn bg-gray-500 text-white">ยกเลิก</button>
                 <button type="submit" id="register-submit-button" class="btn btn-primary">
@@ -983,65 +1097,107 @@
         </form>
     </div>
 </div>
-<div id="edit-user-modal" class="modal hidden fixed inset-0 z-50 overflow-auto bg-smoke-light flex">
-    <div class="relative p-8 bg-white w-full max-w-md m-auto flex-col flex rounded-lg shadow-lg">
-        <div class="flex justify-between items-center mb-4">
-            <h3 class="text-xl font-bold">แก้ไขข้อมูลผู้ใช้งาน</h3>
-            <button id="edit-user-modal-close-button" class="text-gray-500 hover:text-gray-700 font-bold text-2xl">&times;</button>
+<div id="edit-user-modal" class="modal fixed inset-0 bg-black bg-opacity-50 z-[60] hidden flex items-center justify-center">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden transform transition-all">
+        <div class="bg-gradient-to-r from-yellow-500 to-orange-500 p-4 flex justify-between items-center">
+            <h3 class="text-xl font-bold text-white flex items-center gap-2">
+                <span>✏️</span> แก้ไขข้อมูลผู้ใช้
+            </h3>
+            <button type="button" id="edit-user-modal-close" class="text-white hover:text-gray-200 focus:outline-none">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
         </div>
-        
-        <form id="edit-user-form">
-            <input type="hidden" id="edit-user-original-username">
-
-            <div class="mb-4 p-3 bg-gray-100 border border-gray-300 rounded">
-                <label class="block text-xs text-gray-500 font-bold uppercase mb-1">รหัสอ้างอิงระบบ (System ID)</label>
-                <input type="text" id="edit-user-internal-id" class="w-full bg-transparent text-gray-700 font-mono font-bold focus:outline-none cursor-not-allowed" readonly>
-                <p class="text-xs text-gray-400 mt-1">*ใช้เชื่อมโยงประวัติเอกสาร (ห้ามแก้ไข)</p>
-            </div>
-
-            <div class="mb-4">
-                <label for="edit-user-loginname" class="block text-gray-700 text-sm font-bold mb-2">ชื่อสำหรับเข้าสู่ระบบ (Login Name)</label>
-                <input type="text" id="edit-user-loginname" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline bg-yellow-50" placeholder="กำหนดชื่อที่ใช้ล็อกอิน" required>
-                <p class="text-xs text-blue-500 mt-1">*สามารถเปลี่ยนได้ตามต้องการ</p>
-            </div>
-
-            <div class="mb-4">
-                <label for="edit-user-fullname" class="block text-gray-700 text-sm font-bold mb-2">ชื่อ-นามสกุล</label>
-                <input type="text" id="edit-user-fullname" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
-            </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        <div class="p-6">
+            <form id="edit-user-form" class="space-y-4">
+                <input type="hidden" id="edit-uid">
+                
                 <div>
-                    <label for="edit-user-position" class="block text-gray-700 text-sm font-bold mb-2">ตำแหน่ง</label>
-                    <input type="text" id="edit-user-position" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                    <label class="form-label font-bold text-gray-700">ชื่อ-นามสกุล</label>
+                    <input type="text" id="edit-name" class="form-input" required>
                 </div>
-                <div>
-                    <label for="edit-user-department" class="block text-gray-700 text-sm font-bold mb-2">กลุ่มสาระ/งาน</label>
-                    <input type="text" id="edit-user-department" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="form-label font-bold text-gray-700">ตำแหน่ง</label>
+                        <input type="text" id="edit-position" class="form-input" required>
+                    </div>
+                    <div>
+                        <label class="form-label font-bold text-gray-700">กลุ่มสาระฯ/ฝ่าย</label>
+                        <input type="text" id="edit-department" class="form-input" required>
+                    </div>
                 </div>
-            </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <div>
-                    <label for="edit-user-role" class="block text-gray-700 text-sm font-bold mb-2">สิทธิ์ (Role)</label>
-                    <select id="edit-user-role" class="shadow border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
-                        <option value="user">User (ทั่วไป)</option>
-                        <option value="admin">Admin (ผู้ดูแล)</option>
-                    </select>
+                
+                <div class="bg-blue-50 p-4 rounded-lg border border-blue-200">
+    <label class="form-label font-bold text-blue-800">สิทธิ์การใช้งาน (Role)</label>
+    <select id="edit-role" class="form-input bg-white" required>
+        <option value="user">1. User (ครู/ผู้ใช้งานทั่วไป)</option>
+        <optgroup label="2. หัวหน้ากลุ่มสาระการเรียนรู้">
+            <option value="head_thai"> - หัวหน้ากลุ่มสาระฯ ภาษาไทย</option>
+            <option value="head_foreign"> - หัวหน้ากลุ่มสาระฯ ภาษาต่างประเทศ</option>
+            <option value="head_science"> - หัวหน้ากลุ่มสาระฯ วิทยาศาสตร์และเทคโนโลยี</option>
+            <option value="head_art"> - หัวหน้ากลุ่มสาระฯ ศิลปะ</option>
+            <option value="head_social"> - หัวหน้ากลุ่มสาระฯ สังคมศึกษาฯ</option>
+            <option value="head_health"> - หัวหน้ากลุ่มสาระฯ สุขศึกษาและพลศึกษา</option>
+            <option value="head_career"> - หัวหน้ากลุ่มสาระฯ การงานอาชีพ</option>
+            <option value="head_math"> - หัวหน้ากลุ่มสาระฯ คณิตศาสตร์</option>
+        </optgroup>
+        <option value="deputy_acad">3. รองผู้อำนวยการกลุ่มบริหารวิชาการ</option>
+        <option value="deputy_personnel">4. รองผู้อำนวยการกลุ่มบริหารงานบุคคล</option>
+        <option value="saraban">5. สารบรรณโรงเรียน</option>
+        <option value="director">6. ผู้อำนวยการโรงเรียน</option>
+        <option value="admin">7. Admin (ผู้ดูแลระบบ)</option>
+    </select>
+</div>
+                
+                <div class="flex justify-end gap-4 mt-6">
+                    <button type="button" id="edit-user-cancel" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors font-medium">ยกเลิก</button>
+                    <button type="submit" id="edit-user-submit" class="px-6 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors font-medium shadow-md flex items-center justify-center min-w-[120px]">
+                        <span id="edit-user-btn-text">บันทึกข้อมูล</span>
+                    </button>
                 </div>
-                <div>
-                    <label for="edit-user-password" class="block text-gray-700 text-sm font-bold mb-2">เปลี่ยนรหัสผ่าน (ถ้ามี)</label>
-                    <input type="text" id="edit-user-password" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" placeholder="เว้นว่างหากไม่เปลี่ยน">
-                </div>
-            </div>
-
-            <div class="flex justify-end gap-4 mt-6">
-                <button type="button" id="edit-user-cancel-button" class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">ยกเลิก</button>
-                <button type="submit" id="edit-user-submit-button" class="bg-blue-600 hover:bg-blue-800 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline flex items-center">
-                    <span>บันทึกการเปลี่ยนแปลง</span>
+            </form>
+        </div>
+    </div>
+</div>
+<div id="requester-stamper-modal" class="modal fixed inset-0 bg-black bg-opacity-80 z-[70] hidden flex flex-col items-center justify-center">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl mx-4 flex flex-col overflow-hidden" style="height: 90vh;">
+        <div class="p-4 bg-indigo-600 flex justify-between items-center">
+            <h3 class="text-xl font-bold text-white flex items-center gap-2">
+                <span>👆</span> กรุณาแตะตรงจุดที่ต้องการวางลายเซ็นบนเอกสาร
+            </h3>
+            <button type="button" onclick="if(typeof window.cancelSignaturePlacement==='function') window.cancelSignaturePlacement();" class="text-white hover:text-red-300 focus:outline-none" title="ยกเลิก">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </div>
+        <div class="p-2 bg-yellow-100 text-yellow-800 text-sm font-medium flex items-center justify-between gap-3 shadow-sm flex-wrap">
+            <span>เลื่อนดูเอกสาร และ <b>คลิก/แตะ</b> บนหน้ากระดาษตรงจุดที่คุณต้องการประทับลายมือชื่อ</span>
+            <div class="flex gap-2 flex-shrink-0">
+                <button type="button" onclick="if(typeof window.skipSignaturePlacement==='function') window.skipSignaturePlacement();"
+                    class="px-3 py-1 bg-gray-200 text-gray-700 rounded-lg text-xs font-semibold hover:bg-gray-300 transition whitespace-nowrap">
+                    ข้าม (ไม่วางลายเซ็น)
+                </button>
+                <button type="button" onclick="if(typeof window.cancelSignaturePlacement==='function') window.cancelSignaturePlacement();"
+                    class="px-3 py-1 bg-red-100 text-red-700 rounded-lg text-xs font-semibold hover:bg-red-200 transition whitespace-nowrap">
+                    ❌ ยกเลิก
                 </button>
             </div>
-        </form>
+        </div>
+        <div class="flex-1 overflow-auto bg-gray-100 p-3">
+            <div id="requester-pdf-pages" class="flex flex-col items-center gap-3"></div>
+        </div>
+    </div>
+</div>
+<div id="requester-draw-sig-modal" class="hidden fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[80]">
+    <div class="bg-white p-6 rounded-xl shadow-2xl text-center w-[90%] max-w-md">
+        <h3 class="text-lg font-bold mb-2 text-gray-800 flex items-center justify-center gap-2"><span>✍️</span> กรุณาเซ็นชื่อของคุณ</h3>
+        <p class="text-sm text-gray-500 mb-4">ใช้นิ้ว ปากกา หรือเมาส์ เซ็นลงในกรอบด้านล่าง</p>
+        <div class="border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 mb-4 overflow-hidden" style="touch-action: none;">
+            <canvas id="requester-draw-canvas" class="w-full h-40 cursor-crosshair"></canvas>
+        </div>
+        <div class="flex justify-between gap-2">
+            <button type="button" id="req-sig-clear-btn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium">ล้างใหม่</button>
+            <button type="button" id="req-sig-confirm-btn" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold shadow-md">ตกลงและประทับตรา</button>
+        </div>
     </div>
 </div>
         <div id="alert-modal" class="modal">
@@ -1078,56 +1234,73 @@
             <button id="send-memo-modal-close-button" class="text-gray-500 hover:text-gray-700">&times;</button>
         </div>
         <form id="send-memo-form">
-            <input type="hidden" id="memo-modal-request-id">
-            
-            <div class="mb-4 bg-gray-50 p-3 rounded border">
-                <label class="form-label font-bold text-gray-700">ประเภทการดำเนินการ</label>
-                <div class="space-y-2 mt-2">
-                    <div class="flex items-center">
-                        <input type="radio" id="memo_type_reimburse" name="modal_memo_type" value="reimburse" class="h-4 w-4 text-indigo-600">
-                        <label for="memo_type_reimburse" class="ml-2">1. เบิกค่าใช้จ่าย (ส่งเอกสารฉบับจริงที่)</label>
-                    </div>
-                    <div class="flex items-center">
-                        <input type="radio" id="memo_type_non_reimburse" name="modal_memo_type" value="non_reimburse" class="h-4 w-4 text-indigo-600" checked>
-                        <label for="memo_type_non_reimburse" class="ml-2 font-bold text-indigo-700">2. ไม่เบิกค่าใช้จ่าย (แนบไฟล์ในระบบ)</label>
-                    </div>
-                </div>
+    <input type="hidden" id="memo-modal-request-id">
+    
+    <div class="mb-4 bg-gray-50 p-3 rounded border">
+        <label class="form-label font-bold text-gray-700">ประเภทการดำเนินการ</label>
+        <div class="space-y-2 mt-2">
+            <div class="flex items-center">
+                <input type="radio" id="memo_type_reimburse" name="modal_memo_type" value="reimburse" class="h-4 w-4 text-indigo-600">
+                <label for="memo_type_reimburse" class="ml-2">1. เบิกค่าใช้จ่าย (ส่งเอกสารฉบับจริงที่ครูกีรติงานบุคคล)</label>
             </div>
-
-            <div id="modal-non-reimburse-files" class="mb-4 space-y-4 border-t pt-4 hidden">
-    <div class="bg-blue-50 p-3 rounded border border-blue-200 mb-2">
-        <p class="text-sm text-blue-800 font-bold mb-1">คำแนะนำ:</p>
-        <p class="text-xs text-blue-600">กรุณาพิมพ์ใบขออนุญาต/บันทึกข้อความจากระบบ เสนอเซ็นลงนามให้เรียบร้อย แล้วสแกนไฟล์มาแนบในช่องที่ 1</p>
-    </div>
-
-    <div>
-        <label class="form-label text-sm text-red-600 font-bold">* 1. บันทึกข้อความที่ลงนามแล้ว (PDF)</label>
-        <input type="file" id="file-signed-memo" class="form-input text-sm bg-white" accept=".pdf,.jpg,.png,.jpeg">
-    </div>
-
-    <div>
-        <label class="form-label text-sm text-red-600 font-bold">* 2. ไฟล์แลกคาบสอน (PDF)</label>
-        <input type="file" id="file-exchange" class="form-input text-sm" accept=".pdf,.jpg,.png,.jpeg">
-    </div>
-
-    <div>
-        <label class="form-label text-sm text-red-600 font-bold">* 3. หนังสือต้นเรื่อง/หนังสือเชิญ (PDF)</label>
-        <input type="file" id="file-ref-doc" class="form-input text-sm" accept=".pdf,.jpg,.png,.jpeg">
-    </div>
-
-    <div>
-        <label class="form-label text-sm text-gray-700">4. เอกสารอื่นๆ (ถ้ามี)</label>
-        <input type="file" id="file-other" class="form-input text-sm" accept=".pdf,.jpg,.png,.jpeg,.doc,.docx">
-    </div>
-</div>
-            <div class="flex justify-end gap-4 mt-6">
-                <button type="button" id="send-memo-cancel-button" class="btn bg-gray-500 text-white hover:bg-gray-600">ยกเลิก</button>
-                <button type="submit" id="send-memo-submit-button" class="btn btn-primary shadow-lg">
-                    <div id="send-memo-loader" class="loader hidden"></div>
-                    <span>ยืนยันการส่งบันทึก</span>
-                </button>
+            <div class="flex items-center">
+                <input type="radio" id="memo_type_non_reimburse" name="modal_memo_type" value="non_reimburse" class="h-4 w-4 text-indigo-600" checked>
+                <label for="memo_type_non_reimburse" class="ml-2 font-bold text-indigo-700">2. ไม่เบิกค่าใช้จ่าย (แนบไฟล์ในระบบ)</label>
             </div>
-        </form>
+        </div>
+    </div>
+
+    <div class="mb-4 bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+        <label class="form-label font-bold text-gray-800 flex items-center gap-2"><span>➡️</span> ส่งต่อให้หัวหน้ากลุ่มสาระฯ / ผู้ตรวจสอบ</label>
+        <select id="modal-forward-to" class="form-input mt-1 bg-white" required>
+            <option value="">-- เลือกผู้รับเรื่องต่อ --</option>
+            <option value="waiting_head_thai">หัวหน้ากลุ่มสาระฯ ภาษาไทย</option>
+            <option value="waiting_head_foreign">หัวหน้ากลุ่มสาระฯ ภาษาต่างประเทศ</option>
+            <option value="waiting_head_science">หัวหน้ากลุ่มสาระฯ วิทยาศาสตร์และเทคโนโลยี</option>
+            <option value="waiting_head_art">หัวหน้ากลุ่มสาระฯ ศิลปะ</option>
+            <option value="waiting_head_social">หัวหน้ากลุ่มสาระฯ สังคมศึกษาฯ</option>
+            <option value="waiting_head_health">หัวหน้ากลุ่มสาระฯ สุขศึกษาและพลศึกษา</option>
+            <option value="waiting_head_career">หัวหน้ากลุ่มสาระฯ การงานอาชีพ</option>
+            <option value="waiting_head_math">หัวหน้ากลุ่มสาระฯ คณิตศาสตร์</option>
+            <option value="waiting_dep_acad">รองผู้อำนวยการกลุ่มบริหารวิชาการ</option>
+            <option value="waiting_dep_personnel">รองผู้อำนวยการกลุ่มบริหารงานบุคคล</option>
+        </select>
+    </div>
+    <div id="modal-non-reimburse-files" class="mb-4 space-y-4 border-t pt-4 hidden">
+        <div class="bg-blue-50 p-3 rounded border border-blue-200 mb-2">
+            <p class="text-sm text-blue-800 font-bold mb-1">คำแนะนำ:</p>
+            <p class="text-xs text-blue-600">กรุณาพิมพ์ใบขออนุญาต/บันทึกข้อความจากระบบ เสนอเซ็นลงนามให้เรียบร้อย แล้วสแกนไฟล์มาแนบในช่องที่ 1 (หากเซ็นออนไลน์แล้ว อนุโลมให้ข้ามช่อง 1 ได้)</p>
+        </div>
+
+        <div>
+            <label class="form-label text-sm text-red-600 font-bold">* 1. บันทึกข้อความที่ลงนามแล้ว (PDF)</label>
+            <input type="file" id="file-signed-memo" class="form-input text-sm bg-white" accept=".pdf,.jpg,.png,.jpeg">
+        </div>
+
+        <div>
+            <label class="form-label text-sm text-red-600 font-bold">* 2. ไฟล์แลกคาบสอน (PDF)</label>
+            <input type="file" id="file-exchange" class="form-input text-sm" accept=".pdf,.jpg,.png,.jpeg">
+        </div>
+
+        <div>
+            <label class="form-label text-sm text-red-600 font-bold">* 3. หนังสือต้นเรื่อง/หนังสือเชิญ (PDF)</label>
+            <input type="file" id="file-ref-doc" class="form-input text-sm" accept=".pdf,.jpg,.png,.jpeg">
+        </div>
+
+        <div>
+            <label class="form-label text-sm text-gray-700">4. เอกสารอื่นๆ (ถ้ามี)</label>
+            <input type="file" id="file-other" class="form-input text-sm" accept=".pdf,.jpg,.png,.jpeg,.doc,.docx">
+        </div>
+    </div>
+    
+    <div class="flex justify-end gap-4 mt-6">
+        <button type="button" id="send-memo-cancel-button" class="btn bg-gray-500 text-white hover:bg-gray-600">ยกเลิก</button>
+        <button type="submit" id="send-memo-submit-button" class="btn bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg flex items-center gap-2">
+            <div id="send-memo-loader" class="loader hidden w-4 h-4 border-white"></div>
+            <span>ส่งต่อบันทึก</span>
+        </button>
+    </div>
+</form>
     </div>
 </div>
 
@@ -1412,21 +1585,155 @@
 </div>
 </div>
 </div>
-    
+    <div id="saraban-stamper-modal" class="hidden fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[100]">
+    <div class="bg-white w-11/12 max-w-4xl h-[90vh] rounded-xl shadow-2xl flex flex-col overflow-hidden">
+        
+        <div class="bg-indigo-700 text-white px-6 py-4 flex justify-between items-center">
+            <h2 class="text-xl font-bold">📝 งานสารบรรณ: ออกเลขที่และวันที่</h2>
+            <button onclick="closeSarabanModal()" class="text-white hover:text-red-300 font-bold text-2xl">&times;</button>
+        </div>
+
+        <div class="bg-gray-100 p-4 border-b flex flex-wrap gap-4 items-end justify-center">
+            <div>
+                <label class="block text-sm font-bold text-gray-700 mb-1">เลขที่หนังสือ/คำสั่ง:</label>
+                <input type="text" id="saraban-doc-num" placeholder="เช่น 123" class="input-field w-32 text-center text-lg font-bold">
+            </div>
+            <div>
+                <label class="block text-sm font-bold text-gray-700 mb-1">วันที่ออกเอกสาร:</label>
+                <input type="text" id="saraban-doc-date" placeholder="เช่น 26" class="input-field w-32 text-center text-lg font-bold">
+            </div>
+            <div class="bg-yellow-100 text-yellow-800 px-4 py-2 rounded-lg border border-yellow-300 text-sm font-bold">
+                <span id="saraban-instruction">👉 ขั้นตอนที่ 1: กรอกข้อมูลให้ครบ แล้วคลิกบริเวณที่จะวาง "เลขที่"</span>
+            </div>
+        </div>
+
+        <div id="saraban-pdf-container" class="flex-1 overflow-auto bg-gray-300 p-4 text-center relative flex justify-center cursor-crosshair">
+            <canvas id="saraban-pdf-canvas" class="shadow-md bg-white"></canvas>
+            
+            <div id="marker-num" class="hidden absolute w-4 h-4 bg-blue-500 rounded-full border-2 border-white transform -translate-x-1/2 -translate-y-1/2 pointer-events-none opacity-80 shadow-lg"></div>
+            <div id="marker-date" class="hidden absolute w-4 h-4 bg-green-500 rounded-full border-2 border-white transform -translate-x-1/2 -translate-y-1/2 pointer-events-none opacity-80 shadow-lg"></div>
+        </div>
+
+        <div class="bg-gray-50 px-6 py-4 border-t flex justify-between items-center">
+            <button onclick="resetSarabanMarkers()" class="btn bg-gray-500 hover:bg-gray-600 text-white">🔄 รีเซ็ตจุดวาง</button>
+            <button id="btn-saraban-confirm" onclick="applySarabanStamps()" class="btn bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-8 py-2 opacity-50 cursor-not-allowed" disabled>
+                💾 ประทับตราและบันทึก
+            </button>
+        </div>
+    </div>
+</div>
+<div id="signature-modal" class="hidden fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[100]">
+    <div class="bg-white w-11/12 max-w-4xl h-[90vh] rounded-xl shadow-2xl flex flex-col overflow-hidden">
+        
+        <div class="bg-blue-800 text-white px-6 py-4 flex justify-between items-center">
+            <h2 id="signature-modal-title" class="text-xl font-bold">✍️ ระบบลงนามอิเล็กทรอนิกส์</h2>
+            <button onclick="closeSignatureModal()" class="text-white hover:text-red-300 font-bold text-2xl">&times;</button>
+        </div>
+
+        <div class="bg-blue-50 p-3 border-b text-center border-blue-200">
+            <p id="signature-instruction" class="text-blue-800 font-bold">👉 เลื่อนดูเอกสาร และ "คลิก/จิ้ม" บริเวณที่ต้องการวางลายเซ็น</p>
+        </div>
+
+        <div id="signature-pdf-container" class="flex-1 overflow-auto bg-gray-300 p-4 text-center relative flex justify-center cursor-crosshair">
+            <canvas id="signature-pdf-canvas" class="shadow-md bg-white"></canvas>
+            <div id="signature-marker" class="hidden absolute w-6 h-6 bg-blue-500 rounded-full border-2 border-white transform -translate-x-1/2 -translate-y-1/2 pointer-events-none opacity-80 shadow-lg animate-pulse"></div>
+        </div>
+    </div>
+</div>
+
+<div id="signature-pad-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[110]">
+    <div class="bg-white p-6 rounded-xl shadow-2xl text-center w-[90%] max-w-md">
+        <h3 class="text-lg font-bold mb-2 text-gray-800">กรุณาตวัดลายเซ็น</h3>
+        <p class="text-sm text-gray-500 mb-4">ใช้นิ้ว ปากกา Stylus หรือเมาส์ เซ็นลงในกรอบด้านล่าง</p>
+        
+        <div class="border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 mb-4 overflow-hidden">
+            <canvas id="signature-pad-canvas" width="400" height="200" class="w-full touch-none"></canvas>
+        </div>
+        
+        <div class="flex justify-between gap-2">
+            <button onclick="clearSignaturePad()" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium">ล้างใหม่</button>
+            <div>
+                <button onclick="closeSignaturePadModal()" class="px-4 py-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 font-medium mr-2">ยกเลิก</button>
+                <button id="btn-confirm-signature" onclick="applySignatureToPdf()" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold shadow-md">
+                    ตกลงและประทับตรา
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
-
-    <script src="js/config.js"></script>          <script src="js/utils.js"></script>
-    <script src="js/firebaseService.js"></script>  <script src="js/auth.js"></script>
-    <script src="js/requests.js"></script>
-    <script src="js/admin.js"></script>
-    <script src="js/stats.js"></script>
-    <script src="js/main.js"></script>
     <script src="https://unpkg.com/pizzip@3.1.4/dist/pizzip.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/docxtemplater/3.50.0/docxtemplater.js"></script>
-<script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/docxtemplater/3.50.0/docxtemplater.js"></script>
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js"></script>
+    <script src="https://unpkg.com/@pdf-lib/fontkit@0.0.4/dist/fontkit.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';</script>
+   <script src="js/config.js"></script>          <script src="js/utils.js"></script>
+<script src="js/firebaseService.js"></script>  <script src="js/auth.js"></script>
+<script src="js/requests.js"></script>
+<script src="js/admin.js"></script>
+<script src="js/stats.js"></script>
+<script src="js/tokenSign.js"></script>
+<script src="js/main.js"></script>
+<script src="js/sarabun.js"></script>
+<script src="js/signature.js"></script>
+
+<!-- ====== Token Sign Overlay (ลงนามผ่านลิงก์ ไม่ต้อง Login) ====== -->
+<div id="token-sign-overlay"
+     class="hidden fixed inset-0 bg-gradient-to-br from-pink-100 to-blue-200 flex items-center justify-center z-[500] p-4">
+  <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-8">
+
+    <!-- Logo & Header -->
+    <div class="text-center mb-6">
+      <img src="https://img2.pic.in.th/pic/WNY-App-.png" alt="Logo" class="mx-auto h-20 mb-3 drop-shadow-md">
+      <h1 class="text-2xl font-bold text-gray-800">ลงนามเอกสาร</h1>
+      <p class="text-sm text-gray-500 mt-1">ระบบบันทึกข้อความไปราชการ WNY</p>
+    </div>
+
+    <!-- Loading State -->
+    <div id="token-loading" class="text-center py-6">
+      <div class="loader mx-auto mb-3"></div>
+      <p class="text-gray-500">กำลังโหลดข้อมูลเอกสาร...</p>
+    </div>
+
+    <!-- Document Info -->
+    <div id="token-info" class="hidden bg-gray-50 rounded-xl p-4 mb-5 border border-gray-200">
+      <div class="space-y-2 text-sm">
+        <div class="flex gap-3">
+          <span class="text-gray-400 w-20 flex-shrink-0">เรื่อง:</span>
+          <span id="token-doc-title" class="font-semibold text-gray-800"></span>
+        </div>
+        <div class="flex gap-3">
+          <span class="text-gray-400 w-20 flex-shrink-0">ผู้ขอ:</span>
+          <span id="token-doc-requester" class="text-gray-700"></span>
+        </div>
+        <div class="flex gap-3">
+          <span class="text-gray-400 w-20 flex-shrink-0">วันที่:</span>
+          <span id="token-doc-date" class="text-gray-700"></span>
+        </div>
+        <div class="flex gap-3">
+          <span class="text-gray-400 w-20 flex-shrink-0">ขั้นตอน:</span>
+          <span id="token-doc-step" class="font-bold text-blue-700"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Action / Result Area -->
+    <div id="token-content" class="hidden"></div>
+
+    <!-- Error State -->
+    <div id="token-error"
+         class="hidden text-center py-5 px-4 bg-red-50 rounded-xl border border-red-200 text-red-700 font-medium">
+    </div>
+
+  </div>
+</div>
+<!-- ====================================================== -->
+
 </body>
 </html>
 

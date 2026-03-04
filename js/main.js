@@ -24,7 +24,12 @@ async function switchPage(targetPageId) {
             fetchPendingMemos(); // เรียกฟังก์ชันโหลดข้อมูลเฉพาะหน้านี้
         }
     }
-
+// เพิ่มต่อจากเงื่อนไขของ send-memo-page ก็ได้ครับ
+    if (targetPageId === 'approval-page') {
+        if (typeof loadPendingApprovals === 'function') {
+            loadPendingApprovals(); 
+        }
+    }
     // --- Logic เฉพาะของแต่ละหน้า (Parallel Processing) ---
 
     if (targetPageId === 'edit-page') { 
@@ -196,6 +201,7 @@ function renderNotificationUI(count, items) {
 }
 function setupEventListeners() {
     if (typeof setupFormConditions === 'function') setupFormConditions();
+    
     // --- Auth & User Management ---
     const loginForm = document.getElementById('login-form');
     if (loginForm) loginForm.addEventListener('submit', handleLogin);
@@ -203,8 +209,38 @@ function setupEventListeners() {
     const logoutBtn = document.getElementById('logout-button');
     if (logoutBtn) logoutBtn.addEventListener('click', handleLogout);
     
+    // 1. ปุ่มสมัครสมาชิก (ผู้ใช้กดเองจากหน้า Login)
     const showRegBtn = document.getElementById('show-register-modal-button');
-    if (showRegBtn) showRegBtn.addEventListener('click', () => document.getElementById('register-modal').style.display = 'flex');
+    if (showRegBtn) {
+        showRegBtn.addEventListener('click', () => { 
+            document.getElementById('register-modal').style.display = 'flex'; 
+            
+            // ซ่อนช่องเลือกสิทธิ์ ไม่ให้คนนอกเห็น
+            const roleContainer = document.getElementById('reg-role')?.parentElement;
+            if (roleContainer) roleContainer.style.display = 'none';
+            
+            // บังคับค่าให้เป็น 'user' เสมอเพื่อความปลอดภัย
+            const roleSelect = document.getElementById('reg-role');
+            if (roleSelect) roleSelect.value = 'user';
+        });
+    }
+
+    // 2. ปุ่มเพิ่มผู้ใช้ (Admin กดจากหน้าจัดการผู้ใช้)
+    // เพิ่มดักจับ Event ตรงนี้เพื่อเปิดแสดง Dropdown สิทธิ์
+    const addUserBtn = document.getElementById('add-user-button');
+    if (addUserBtn) {
+        addUserBtn.addEventListener('click', () => {
+            document.getElementById('register-modal').style.display = 'flex';
+            
+            // แสดงช่องเลือกสิทธิ์ให้ Admin ใช้งาน
+            const roleContainer = document.getElementById('reg-role')?.parentElement;
+            if (roleContainer) roleContainer.style.display = 'block';
+            
+            // ตั้งค่าเริ่มต้นเป็น user หรือค่าอื่นที่ต้องการ
+            const roleSelect = document.getElementById('reg-role');
+            if (roleSelect) roleSelect.value = 'user'; 
+        });
+    }
     
     const regForm = document.getElementById('register-form');
     if (regForm) regForm.addEventListener('submit', handleRegister);
@@ -223,7 +259,10 @@ function setupEventListeners() {
     document.querySelectorAll('.modal').forEach(modal => { 
         modal.addEventListener('click', (e) => { if (e.target === modal) modal.style.display = 'none'; }); 
     });
-    
+    // --- Edit User Management ---
+document.getElementById('edit-user-form')?.addEventListener('submit', handleEditUserSubmit);
+document.getElementById('edit-user-modal-close')?.addEventListener('click', () => { document.getElementById('edit-user-modal').style.display = 'none'; });
+document.getElementById('edit-user-cancel')?.addEventListener('click', () => { document.getElementById('edit-user-modal').style.display = 'none'; });
     document.getElementById('register-modal-close-button')?.addEventListener('click', () => document.getElementById('register-modal').style.display = 'none');
     document.getElementById('register-modal-close-button2')?.addEventListener('click', () => document.getElementById('register-modal').style.display = 'none');
     
@@ -249,16 +288,8 @@ function setupEventListeners() {
     document.getElementById('send-memo-modal-close-button')?.addEventListener('click', () => document.getElementById('send-memo-modal').style.display = 'none');
     document.getElementById('send-memo-cancel-button')?.addEventListener('click', () => document.getElementById('send-memo-modal').style.display = 'none');
     document.getElementById('send-memo-form')?.addEventListener('submit', handleMemoSubmitFromModal);
-// --- Admin: Edit User Modal ---
-    document.getElementById('edit-user-modal-close-button')?.addEventListener('click', () => {
-        document.getElementById('edit-user-modal').style.display = 'none';
-    });
     
-    document.getElementById('edit-user-cancel-button')?.addEventListener('click', () => {
-        document.getElementById('edit-user-modal').style.display = 'none';
-    });
 
-    document.getElementById('edit-user-form')?.addEventListener('submit', handleEditUserSubmit);
     // --- Stats ---
     document.getElementById('refresh-stats')?.addEventListener('click', async () => { 
         if(typeof loadStatsData === 'function') {
@@ -602,8 +633,17 @@ document.addEventListener('DOMContentLoaded', () => {
     
     if (typeof resetEditPage === 'function') resetEditPage();
     
-    const user = getCurrentUser();
-    if (user) { initializeUserSession(user); } else { showLoginScreen(); }
+    // ตรวจสอบว่ามีลิงก์ลงนามพิเศษ (?sign=TOKEN) หรือไม่
+    const _signToken = new URLSearchParams(window.location.search).get('sign');
+    if (_signToken) {
+        // โหมดลงนามผ่านลิงก์ — ไม่ต้อง Login
+        if (typeof handleTokenSignFlow === 'function') {
+            handleTokenSignFlow(_signToken);
+        }
+    } else {
+        const user = getCurrentUser();
+        if (user) { initializeUserSession(user); } else { showLoginScreen(); }
+    }
 });
 // ฟังก์ชันสร้างตัวเลือกปี (ย้อนหลัง 3 ปี)
 function setupYearSelectors() {
@@ -835,10 +875,16 @@ async function mergeFilesToSinglePDF(files) {
 }
 
 // 2. ฟังก์ชันหลักสำหรับส่งบันทึกจาก Modal (รวมไฟล์แล้วอัปโหลด)
+// ==========================================
+// 2. ฟังก์ชันหลักสำหรับส่งบันทึกจาก Modal (ปรับปรุง: Admin Bypass File)
+// ==========================================
 async function handleMemoSubmitFromModal(e) {
     e.preventDefault();
     const user = getCurrentUser();
     if (!user) return;
+
+    // ตรวจสอบสิทธิ์ Admin
+    const isAdmin = user.role === 'admin';
 
     const requestId = document.getElementById('memo-modal-request-id').value;
     
@@ -852,80 +898,94 @@ async function handleMemoSubmitFromModal(e) {
         let finalFileUrlForAdmin = ""; 
 
         if (memoType === 'non_reimburse') {
-            // --- ดึงไฟล์จาก Input (ตาม ID ใหม่) ---
-            // ใช้ Optional Chaining (?.) เพื่อกัน Error ถ้าหา Element ไม่เจอ
-            const fileSigned = document.getElementById('file-signed-memo')?.files[0]; // 1. ลงนาม
-            const fileExchange = document.getElementById('file-exchange')?.files[0];  // 2. แลกคาบ
-            const fileRef = document.getElementById('file-ref-doc')?.files[0];        // 3. ต้นเรื่อง
-            const fileOther = document.getElementById('file-other')?.files[0];        // 4. อื่นๆ
+            // --- ดึงไฟล์จาก Input ---
+            const fileSigned = document.getElementById('file-signed-memo')?.files[0]; 
+            const fileExchange = document.getElementById('file-exchange')?.files[0];  
+            const fileRef = document.getElementById('file-ref-doc')?.files[0];        
+            const fileOther = document.getElementById('file-other')?.files[0];        
 
-            // ตรวจสอบไฟล์บังคับ (1, 2, 3)
-            if (!fileSigned || !fileExchange || !fileRef) {
-                throw new Error("กรุณาแนบไฟล์บังคับให้ครบถ้วน:\n1. บันทึกข้อความที่ลงนามแล้ว\n2. ไฟล์แลกคาบสอน\n3. หนังสือต้นเรื่อง");
-            }
-
-            // --- รวมไฟล์ทั้งหมดเป็นไฟล์เดียว (Merge) ---
-            // เรียงลำดับ: ลงนาม -> แลกคาบ -> ต้นเรื่อง -> อื่นๆ
+            // กรองไฟล์ที่มีจริง
             const filesToMerge = [fileSigned, fileExchange, fileRef, fileOther].filter(f => f); 
+
+            // --- 1. ตรวจสอบเงื่อนไข (Validation) ---
+            // ถ้าไม่ใช่ Admin ต้องแนบไฟล์ครบ
+            // ถ้าเป็น Admin แต่ไม่มีไฟล์เลย ก็ให้ผ่านได้ (Bypass)
+            // ถ้าเป็น Admin และมีการแนบไฟล์มาบางส่วน ก็ให้รวมไฟล์ตามปกติ
             
-            // เปลี่ยนข้อความปุ่มเพื่อแจ้งสถานะ
-            const btn = document.getElementById('send-memo-submit-button');
-            const originalBtnText = btn.innerHTML;
-            btn.innerHTML = '<div class="loader"></div> กำลังรวมไฟล์ PDF...';
-
-            // เรียกฟังก์ชันรวมไฟล์
-            const mergedPdfBlob = await mergeFilesToSinglePDF(filesToMerge);
-
-            // --- อัปโหลดไฟล์ที่รวมเสร็จแล้ว ---
-            btn.innerHTML = '<div class="loader"></div> กำลังอัปโหลด...';
-            
-            // แปลง Blob เป็น Base64 เพื่อส่งผ่าน API
-            const mergedBase64 = await blobToBase64(mergedPdfBlob);
-            
-            const uploadRes = await apiCall('POST', 'uploadGeneratedFile', {
-                data: mergedBase64,
-                filename: `Complete_Memo_${requestId.replace(/[\/\\:\.]/g, '-')}.pdf`,
-                mimeType: 'application/pdf',
-                username: user.username,
-                requestId: requestId
-            });
-
-            if (uploadRes.status !== 'success') throw new Error("อัปโหลดไฟล์ไม่สำเร็จ: " + uploadRes.message);
-            
-            finalFileUrlForAdmin = uploadRes.url;
-
-            // --- บันทึกลิงก์ลง Database ---
-            await apiCall('POST', 'updateRequest', {
-                requestId: requestId,
-                completedMemoUrl: finalFileUrlForAdmin 
-            });
-
-            if (typeof db !== 'undefined') {
-                const docId = requestId.replace(/[\/\\:\.]/g, '-');
-                await db.collection('requests').doc(docId).set({
-                    completedMemoUrl: finalFileUrlForAdmin,
-                    lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
-                }, { merge: true });
+            if (!isAdmin) {
+                if (!fileSigned || !fileExchange || !fileRef) {
+                    throw new Error("กรุณาแนบไฟล์บังคับให้ครบถ้วน:\n1. บันทึกข้อความที่ลงนามแล้ว\n2. ไฟล์แลกคาบสอน\n3. หนังสือต้นเรื่อง");
+                }
             }
-            
-            // คืนค่าข้อความปุ่ม
-            btn.innerHTML = originalBtnText;
 
-        } else {
-            // กรณีเบิกเงิน (ส่งเอกสารจริง)
-        }
+            // --- 2. รวมไฟล์และอัปโหลด (ถ้ามีไฟล์) ---
+            if (filesToMerge.length > 0) {
+                // เปลี่ยนข้อความปุ่ม
+                const btn = document.getElementById('send-memo-submit-button');
+                const originalBtnText = btn.innerHTML;
+                btn.innerHTML = '<div class="loader"></div> กำลังรวมไฟล์ PDF...';
+
+                // เรียกฟังก์ชันรวมไฟล์
+                const mergedPdfBlob = await mergeFilesToSinglePDF(filesToMerge);
+
+                // --- อัปโหลดไฟล์ ---
+                btn.innerHTML = '<div class="loader"></div> กำลังอัปโหลด...';
+                
+                const mergedBase64 = await blobToBase64(mergedPdfBlob);
+                
+                const uploadRes = await apiCall('POST', 'uploadGeneratedFile', {
+                    data: mergedBase64,
+                    filename: `Complete_Memo_${requestId.replace(/[\/\\:\.]/g, '-')}.pdf`,
+                    mimeType: 'application/pdf',
+                    username: user.username,
+                    requestId: requestId
+                });
+
+                if (uploadRes.status !== 'success') throw new Error("อัปโหลดไฟล์ไม่สำเร็จ: " + uploadRes.message);
+                
+                finalFileUrlForAdmin = uploadRes.url;
+                
+                // คืนค่าปุ่ม
+                btn.innerHTML = originalBtnText;
+
+            } else if (isAdmin) {
+                console.log("🛡️ Admin Bypass: ส่งบันทึกโดยไม่มีไฟล์แนบ");
+                // กรณี Admin ไม่แนบไฟล์ ระบบจะข้ามขั้นตอน Merge/Upload
+                // finalFileUrlForAdmin จะเป็นค่าว่าง ""
+            }
+
+            // --- 3. บันทึกลิงก์ลง Database (ถ้ามี URL) ---
+            if (finalFileUrlForAdmin) {
+                await apiCall('POST', 'updateRequest', {
+                    requestId: requestId,
+                    completedMemoUrl: finalFileUrlForAdmin 
+                });
+
+                if (typeof db !== 'undefined') {
+                    const docId = requestId.replace(/[\/\\:\.]/g, '-');
+                    await db.collection('requests').doc(docId).set({
+                        completedMemoUrl: finalFileUrlForAdmin,
+                        lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+                    }, { merge: true });
+                }
+            }
+        } 
 
         // --- ส่งสถานะ "Submitted" ไปยังระบบ ---
         const result = await apiCall('POST', 'uploadMemo', { 
             refNumber: requestId, 
             file: null, 
-            fileUrl: finalFileUrlForAdmin, 
+            fileUrl: finalFileUrlForAdmin, // ถ้า Admin ไม่แนบ ค่านี้จะเป็น "" ซึ่ง backend ควรรับได้
             username: user.username, 
-            memoType: memoType 
+            memoType: memoType,
+            isAdminBypass: isAdmin // (Optional) ส่ง Flag บอก Backend ว่าเป็นการ Bypass
         });
 
         if (result.status === 'success') { 
-            showAlert('สำเร็จ', 'รวมไฟล์และส่งบันทึกข้อความเรียบร้อยแล้ว'); 
+            showAlert('สำเร็จ', isAdmin && !finalFileUrlForAdmin 
+                ? 'อัปเดตสถานะเรียบร้อยแล้ว (Admin Bypass)' 
+                : 'รวมไฟล์และส่งบันทึกข้อความเรียบร้อยแล้ว'); 
+            
             document.getElementById('send-memo-modal').style.display = 'none'; 
             document.getElementById('send-memo-form').reset(); 
             
@@ -947,3 +1007,554 @@ async function handleMemoSubmitFromModal(e) {
         toggleLoader('send-memo-submit-button', false);
     }
 }
+// ในไฟล์ js/main.js
+
+function updateSidebarForRole(user) {
+    // รายการ ID ของเมนู User ทั่วไป
+    const userMenus = ['nav-dashboard', 'nav-create-request', 'nav-create-memo'];
+    const isApprover = ['deputy_acad', 'deputy_personnel', 'saraban', 'director', 'admin'].includes(user.role) ||
+                       (user.role && user.role.startsWith('head_'));
+
+    if (isApprover) {
+        const inboxMenu = document.getElementById('nav-approval-inbox');
+        if (inboxMenu) inboxMenu.style.display = 'flex'; // โชว์เมนูให้ผู้บริหาร
+    }
+    // รายการ ID ของเมนู Admin
+    const adminMenus = ['nav-admin-panel'];
+
+    if (user.username === 'admin') {
+        // --- กรณีเป็น Admin ---
+        // 1. ซ่อนเมนู User
+        userMenus.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = 'none';
+        });
+
+        // 2. แสดงเมนู Admin
+        adminMenus.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = 'block'; // หรือ 'flex' แล้วแต่ CSS
+        });
+
+        // 3. บังคับเปลี่ยนหน้าไปที่ Admin Panel ทันที
+        switchPage('admin-panel'); 
+
+    } else {
+        // --- กรณีเป็น User ทั่วไป ---
+        // 1. แสดงเมนู User
+        userMenus.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = 'block';
+        });
+
+        // 2. ซ่อนเมนู Admin
+        adminMenus.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = 'none';
+        });
+        
+        // 3. ไปหน้า Dashboard
+        switchPage('dashboard');
+    }
+}
+// --- APPROVAL WORKFLOW SYSTEM ---
+
+// cache เก็บข้อมูลเอกสารรอลงนาม (ใช้ใน openApprovalDocument)
+window._approvalDocs = {};
+
+// 1. ฟังก์ชันโหลดรายการเอกสารที่รอเซ็น
+async function loadPendingApprovals() {
+    const user = getCurrentUser();
+    if (!user) return;
+
+    const container = document.getElementById('approval-list-container');
+    container.innerHTML = `<div class="col-span-full flex justify-center py-10"><div class="loader"></div></div>`;
+
+    try {
+        const targetStatus = getTargetStatusForUser(user.role);
+
+        if (!targetStatus) {
+            container.innerHTML = `<div class="col-span-full text-center py-10 text-gray-500">คุณไม่มีสิทธิ์ในการอนุมัติเอกสาร</div>`;
+            return;
+        }
+
+        const snapshot = await db.collection('requests')
+            .where('docStatus', '==', targetStatus)
+            .orderBy('timestamp', 'desc')
+            .get();
+
+        if (snapshot.empty) {
+            container.innerHTML = `
+                <div class="col-span-full text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+                    <span class="text-4xl">🎉</span>
+                    <h3 class="text-lg font-bold text-gray-700 mt-4">ไม่มีเอกสารคั่งค้าง</h3>
+                    <p class="text-gray-500">โต๊ะทำงานของคุณว่างเปล่า ยอดเยี่ยมมาก!</p>
+                </div>`;
+            document.getElementById('approval-badge').classList.add('hidden');
+            return;
+        }
+
+        const badge = document.getElementById('approval-badge');
+        badge.innerText = snapshot.size;
+        badge.classList.remove('hidden');
+
+        // เก็บข้อมูลไว้ใน cache เพื่อหลีกเลี่ยงการส่ง URL ใน onclick โดยตรง
+        window._approvalDocs = {};
+        snapshot.forEach(doc => { window._approvalDocs[doc.id] = doc.data(); });
+
+        let html = '';
+        snapshot.forEach(doc => {
+            const req  = doc.data();
+            const pdfUrl = req.pdfUrl || req.memoPdfUrl || req.currentPdfUrl || '';
+            const dateStr = req.timestamp ? formatDisplayDate(req.timestamp) : '-';
+
+            // --- กำหนดปุ่มตามบทบาทของผู้ใช้ ---
+            let actionBtn = '';
+            if (user.role === 'saraban') {
+                // สารบรรณ: เปิดระบบออกเลขที่และวันที่
+                actionBtn = `
+                    <button onclick="openSarabanForApproval('${doc.id}')"
+                        class="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium flex justify-center items-center gap-2 transition-colors">
+                        <span>📝</span> ออกเลขที่และวันที่เอกสาร
+                    </button>`;
+            } else if (user.role === 'admin') {
+                // แอดมิน: ตรวจสอบและส่งต่อสารบรรณ (ไม่ต้องเซ็น)
+                actionBtn = `
+                    <div class="flex gap-2 mt-1">
+                        <a href="${pdfUrl}" target="_blank"
+                            class="flex-1 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium flex justify-center items-center gap-1 text-sm transition-colors">
+                            <span>📄</span> ดูเอกสาร
+                        </a>
+                        <button onclick="adminForwardToSaraban('${doc.id}')"
+                            class="flex-1 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium flex justify-center items-center gap-1 text-sm transition-colors">
+                            <span>✅</span> ส่งสารบรรณ
+                        </button>
+                    </div>`;
+            } else {
+                // ทุกบทบาทที่เซ็นได้ (หัวหน้า, รองผอ., ผอ.)
+                actionBtn = `
+                    <button onclick="openApprovalDocument('${doc.id}')"
+                        class="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium flex justify-center items-center gap-2 transition-colors">
+                        <span>✍️</span> เปิดอ่านและลงนาม
+                    </button>`;
+            }
+
+            html += `
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 hover:shadow-md transition-shadow">
+                    <div class="flex justify-between items-start mb-3">
+                        <span class="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-bold rounded">
+                            ${req.documentType || 'บันทึกข้อความ'}
+                        </span>
+                        <span class="text-xs text-gray-500">${dateStr}</span>
+                    </div>
+                    <h3 class="font-bold text-gray-800 text-lg line-clamp-2">${req.purpose || 'ไม่มีหัวข้อ'}</h3>
+                    <p class="text-sm text-gray-600 mt-1 mb-4">ผู้ขอ: ${req.requesterName || '-'}</p>
+                    ${actionBtn}
+                </div>
+            `;
+        });
+        container.innerHTML = html;
+
+    } catch (error) {
+        console.error("Error loading approvals:", error);
+        container.innerHTML = `<div class="col-span-full text-center py-10 text-red-500">เกิดข้อผิดพลาดในการดึงข้อมูล</div>`;
+    }
+}
+
+// 2. ฟังก์ชันตรวจสอบว่า Role นี้ ต้องดูเอกสาร Status ไหน
+// ฟังก์ชันตรวจสอบว่า Role นี้ ต้องดูเอกสาร Status ไหน
+function getTargetStatusForUser(role) {
+    // ดักจับกลุ่มหัวหน้ากลุ่มสาระทั้งหมด (ที่ขึ้นต้นด้วย head_)
+    if (role && role.startsWith('head_')) {
+        // เช่น ถ้า role คือ 'head_thai' จะดึงเอกสารสถานะ 'waiting_head_thai'
+        return 'waiting_' + role; 
+    }
+
+    // ตำแหน่งอื่นๆ ยังคงรูปแบบเดิม
+    switch (role) {
+        case 'deputy_acad':      return 'waiting_dep_acad';
+        case 'deputy_personnel': return 'waiting_dep_personnel';
+        case 'saraban':          return 'waiting_saraban';
+        case 'director':         return 'waiting_director';
+        case 'admin':            return 'waiting_admin_review'; // แอดมินตรวจสอบก่อนส่งสารบรรณ
+        default:                 return null;
+    }
+}
+
+// 3. ฟังก์ชันเมื่อกดปุ่ม "เปิดอ่านและลงนาม" (อ่านข้อมูลจาก cache _approvalDocs)
+function openApprovalDocument(docId) {
+    const data = window._approvalDocs?.[docId] || {};
+    const pdfUrl = data.pdfUrl || data.memoPdfUrl || data.currentPdfUrl || '';
+    const currentDocStatus = data.docStatus || null;
+
+    if (!pdfUrl) {
+        alert("ไม่พบไฟล์ PDF ในระบบ กรุณาติดต่อแอดมิน");
+        return;
+    }
+    openSignatureSystem(pdfUrl, docId, "✍️ ลงนามเอกสาร", currentDocStatus);
+}
+
+// 4. แอดมินตรวจสอบแล้ว → ส่งต่อให้งานสารบรรณ (ไม่ต้องเซ็น)
+async function adminForwardToSaraban(docId) {
+    if (!confirm('ยืนยันการส่งเอกสารไปยังงานสารบรรณ?')) return;
+    const safeId = docId.replace(/[\/\\:\.]/g, '-');
+    try {
+        showAlert('กำลังดำเนินการ', 'กำลังส่งเอกสารไปยังงานสารบรรณ...', false);
+        const user = getCurrentUser();
+        if (typeof db !== 'undefined') {
+            await db.collection('requests').doc(safeId).set({
+                docStatus:       'waiting_saraban',
+                adminReviewedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                adminReviewedBy: user?.name || user?.username || 'admin'
+            }, { merge: true });
+        }
+        apiCall('POST', 'updateRequest', {
+            requestId: docId,
+            docStatus: 'waiting_saraban'
+        }).catch(err => console.warn("Sheet update error:", err));
+
+        document.getElementById('alert-modal').style.display = 'none';
+        // แอดมินจะสร้างลิงก์ให้งานสารบรรณผ่านหน้า "จัดการลิงก์ลงนาม" เอง
+        showAlert('✅ สำเร็จ', 'ส่งเอกสารไปงานสารบรรณเรียบร้อยแล้ว');
+        loadPendingApprovals();
+    } catch (e) {
+        document.getElementById('alert-modal').style.display = 'none';
+        showAlert('ผิดพลาด', e.message);
+    }
+}
+
+// 5. สารบรรณ: โหลด PDF แล้วเปิดระบบออกเลขที่
+async function openSarabanForApproval(docId) {
+    const data   = window._approvalDocs?.[docId] || {};
+    const pdfUrl = data.pdfUrl || data.memoPdfUrl || data.currentPdfUrl || '';
+
+    if (!pdfUrl) {
+        alert("ไม่พบไฟล์ PDF ในระบบ กรุณาติดต่อแอดมิน");
+        return;
+    }
+    try {
+        showAlert('กำลังโหลด', 'กำลังโหลดเอกสาร...', false);
+        const response    = await fetch(pdfUrl);
+        const arrayBuffer = await response.arrayBuffer();
+        document.getElementById('alert-modal').style.display = 'none';
+        openSarabanModal(arrayBuffer, docId);
+    } catch (e) {
+        document.getElementById('alert-modal').style.display = 'none';
+        alert("ไม่สามารถโหลด PDF ได้: " + e.message);
+    }
+}
+// ฟังก์ชันเปิด Modal และนำข้อมูลเดิมมาแสดง
+window.openEditUserModal = function(uid, name, position, department, role) {
+    document.getElementById('edit-uid').value = uid || '';
+    document.getElementById('edit-name').value = name || '';
+    document.getElementById('edit-position').value = position || '';
+    document.getElementById('edit-department').value = department || '';
+    
+    // ตั้งค่า Role เดิมให้ถูกต้อง
+    const roleSelect = document.getElementById('edit-role');
+    if (roleSelect) {
+        roleSelect.value = role || 'user';
+    }
+    
+    // แสดง Modal
+    const modal = document.getElementById('edit-user-modal');
+    modal.style.display = 'flex';
+    modal.classList.remove('hidden');
+};
+
+// ฟังก์ชันบันทึกข้อมูลเมื่อกด Submit
+// ฟังก์ชันบันทึกข้อมูลเมื่อกด Submit
+async function handleEditUserSubmit(e) {
+    e.preventDefault();
+    
+    // ดึงค่าจากฟอร์ม
+    const username = document.getElementById('edit-uid').value; 
+    const newName = document.getElementById('edit-name').value.trim();
+    const newPosition = document.getElementById('edit-position').value.trim();
+    const newDepartment = document.getElementById('edit-department').value.trim();
+    const newRole = document.getElementById('edit-role').value;
+    
+    if (!username) {
+        showAlert('ผิดพลาด', 'ไม่พบรหัสผู้ใช้งาน');
+        return;
+    }
+
+    const btnText = document.getElementById('edit-user-btn-text');
+    const submitBtn = document.getElementById('edit-user-submit');
+    
+    btnText.textContent = 'กำลังอัปเดต...';
+    submitBtn.disabled = true;
+
+    try {
+        // 1. เตรียมข้อมูล Payload ให้ตรงกับที่ Code.gs ต้องการ
+        const payload = {
+            username: username,
+            loginName: username, // ต้องส่งไปด้วย เพื่อไม่ให้ Code.gs ลบค่า LoginName เดิมทิ้ง
+            fullName: newName,
+            position: newPosition,
+            department: newDepartment,
+            role: newRole
+        };
+
+        // ★★★ จุดที่แก้ไข: เปลี่ยนชื่อ API จาก 'editUser' เป็น 'adminUpdateUser' ★★★
+        const result = await apiCall('POST', 'adminUpdateUser', payload);
+
+        if (result.status !== 'success') {
+            throw new Error(result.message || 'ไม่สามารถอัปเดตข้อมูลใน Google Sheets ได้');
+        }
+
+        // 2. อัปเดตใน Firebase ควบคู่ไปด้วย
+        if (typeof db !== 'undefined') {
+            try {
+                const snapshot = await db.collection('users').where('username', '==', username).get();
+                if (!snapshot.empty) {
+                    const batch = db.batch();
+                    snapshot.forEach(doc => {
+                        batch.update(doc.ref, {
+                            fullName: newName,
+                            position: newPosition,
+                            department: newDepartment,
+                            role: newRole,
+                            lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                    });
+                    await batch.commit();
+                }
+            } catch (fbError) {
+                console.warn("Firebase update warning:", fbError);
+            }
+        }
+        
+        showAlert('สำเร็จ', 'อัปเดตข้อมูลผู้ใช้เรียบร้อยแล้ว');
+        document.getElementById('edit-user-modal').style.display = 'none';
+        
+        // โหลดตารางใหม่เพื่อให้ข้อมูลอัปเดตทันที
+        if (typeof fetchAllUsers === 'function') {
+            fetchAllUsers(); 
+        }
+        
+    } catch (error) {
+        console.error('Error updating user:', error);
+        showAlert('ผิดพลาด', 'ไม่สามารถอัปเดตข้อมูลได้: ' + error.message);
+    } finally {
+        btnText.textContent = 'บันทึกข้อมูล';
+        submitBtn.disabled = false;
+    }
+}
+
+// ============================================================
+// ระบบลายเซ็นผู้ขอ (Requester Signature System)
+// ============================================================
+
+// ตัวแปร global สำหรับ signature pad ในฟอร์ม (pre-submission)
+let requesterSignaturePad = null;
+// signature pad ในฟอร์มแก้ไข
+let editSignaturePad = null;
+// เก็บข้อมูลเอกสารล่าสุดที่สร้างเสร็จ (สำหรับ post-submission e-sign)
+window._lastCreatedDoc = { id: null, pdfUrl: null };
+// signature pad ใน draw modal (post-submission)
+let _reqDrawPadInstance = null;
+
+// --- 1. Initialize signature pad ในฟอร์ม (form-sig-canvas) ---
+function initFormSignaturePad() {
+    const canvas = document.getElementById('form-sig-canvas');
+    if (!canvas) return;
+
+    // ต้อง resize canvas ก่อนเสมอ เพราะ CSS width ≠ canvas pixel width
+    const ratio = Math.max(window.devicePixelRatio || 1, 1);
+    canvas.width = canvas.offsetWidth * ratio;
+    canvas.height = canvas.offsetHeight * ratio;
+    canvas.getContext('2d').scale(ratio, ratio);
+
+    if (requesterSignaturePad) {
+        requesterSignaturePad.clear();
+    } else {
+        requesterSignaturePad = new SignaturePad(canvas, {
+            penColor: 'blue',
+            minWidth: 1.0,
+            maxWidth: 2.5
+        });
+    }
+}
+
+// --- 1b. Initialize signature pad ในฟอร์มแก้ไข (edit-sig-canvas) ---
+function initEditSignaturePad() {
+    const canvas = document.getElementById('edit-sig-canvas');
+    if (!canvas) return;
+
+    const ratio = Math.max(window.devicePixelRatio || 1, 1);
+    canvas.width = canvas.offsetWidth * ratio;
+    canvas.height = canvas.offsetHeight * ratio;
+    canvas.getContext('2d').scale(ratio, ratio);
+
+    if (editSignaturePad) {
+        editSignaturePad.clear();
+    } else {
+        editSignaturePad = new SignaturePad(canvas, {
+            penColor: 'blue',
+            minWidth: 1.0,
+            maxWidth: 2.5
+        });
+        const clearBtn = document.getElementById('edit-sig-clear-btn');
+        if (clearBtn) clearBtn.addEventListener('click', () => editSignaturePad && editSignaturePad.clear());
+    }
+}
+
+// --- 2. เปิด draw modal สำหรับ post-submission e-sign ---
+function openRequesterDrawSigModal() {
+    const modal = document.getElementById('requester-draw-sig-modal');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+
+    const canvas = document.getElementById('requester-draw-canvas');
+    const ratio = Math.max(window.devicePixelRatio || 1, 1);
+    canvas.width = canvas.offsetWidth * ratio;
+    canvas.height = canvas.offsetHeight * ratio;
+    canvas.getContext('2d').scale(ratio, ratio);
+
+    if (_reqDrawPadInstance) {
+        _reqDrawPadInstance.clear();
+    } else {
+        _reqDrawPadInstance = new SignaturePad(canvas, {
+            penColor: 'blue',
+            minWidth: 1.0,
+            maxWidth: 2.5
+        });
+    }
+}
+
+// --- 3. ยืนยันลายเซ็นใน draw modal → เปิด stamper modal กับ PDF ---
+async function handleRequesterDrawConfirm() {
+    if (!_reqDrawPadInstance || _reqDrawPadInstance.isEmpty()) {
+        alert('กรุณาเซ็นชื่อก่อนกดยืนยันครับ');
+        return;
+    }
+
+    const signatureBase64 = _reqDrawPadInstance.toDataURL('image/png');
+    document.getElementById('requester-draw-sig-modal').classList.add('hidden');
+
+    const pdfUrl = window._lastCreatedDoc.pdfUrl;
+    if (!pdfUrl) {
+        alert('ไม่พบไฟล์ PDF กรุณาลองใหม่');
+        return;
+    }
+
+    try {
+        showAlert('กำลังโหลด', 'กำลังโหลดเอกสารสำหรับลงนาม...', false);
+        const response = await fetch(pdfUrl);
+        if (!response.ok) throw new Error('โหลด PDF ไม่สำเร็จ');
+        const pdfBlob = await response.blob();
+        document.getElementById('alert-modal').style.display = 'none';
+
+        // เรียก promptForSignature (ใน requests.js) → เปิด requester-stamper-modal
+        const signedBlob = await promptForSignature(pdfBlob, signatureBase64);
+
+        // อัปโหลดไฟล์ที่ลงนามแล้วกลับขึ้น Drive
+        await reUploadSignedDocument(signedBlob);
+
+    } catch (e) {
+        document.getElementById('alert-modal').style.display = 'none';
+        alert('เกิดข้อผิดพลาด: ' + e.message);
+    }
+}
+
+// --- 4. อัปโหลดไฟล์ที่ลงนามแล้วและอัปเดต Firestore ---
+async function reUploadSignedDocument(signedBlob) {
+    const docId = window._lastCreatedDoc.id;
+    if (!docId) { alert('ไม่พบรหัสเอกสาร'); return; }
+
+    try {
+        showAlert('กำลังบันทึก', 'กำลังบันทึกเอกสารที่ลงนามแล้ว...', false);
+
+        const user = getCurrentUser();
+        const base64 = await blobToBase64(signedBlob);
+        const safeId = docId.replace(/[\/\\:\.]/g, '-');
+        const filename = `memo_signed_${safeId}.pdf`;
+
+        const uploadRes = await apiCall('POST', 'uploadGeneratedFile', {
+            data: base64,
+            filename: filename,
+            mimeType: 'application/pdf',
+            username: user?.username || 'user'
+        });
+
+        if (uploadRes.status !== 'success') throw new Error(uploadRes.message || 'Upload ไม่สำเร็จ');
+
+        // อัปเดต Firestore ด้วย URL ใหม่
+        if (typeof db !== 'undefined') {
+            await db.collection('requests').doc(safeId).set({
+                memoPdfUrl: uploadRes.url,
+                pdfUrl: uploadRes.url,
+                lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+        }
+
+        document.getElementById('alert-modal').style.display = 'none';
+        showAlert('สำเร็จ', 'ลงนามเอกสารเรียบร้อยแล้ว!');
+        if (typeof clearRequestsCache === 'function') clearRequestsCache();
+
+    } catch (e) {
+        document.getElementById('alert-modal').style.display = 'none';
+        showAlert('ผิดพลาด', 'บันทึกไม่สำเร็จ: ' + e.message);
+    }
+}
+
+// --- 5. แสดง form-result หลังสร้างเอกสารสำเร็จ ---
+function showFormResult(title, message, pdfUrl, requestId) {
+    // ซ่อนฟอร์ม แสดง result
+    document.getElementById('request-form').classList.add('hidden');
+    const resultDiv = document.getElementById('form-result');
+    resultDiv.classList.remove('hidden');
+
+    document.getElementById('form-result-title').textContent = title;
+    document.getElementById('form-result-message').textContent = message;
+
+    // ตั้งค่าปุ่มพิมพ์
+    const btnPrint = document.getElementById('btn-print-doc');
+    if (pdfUrl) {
+        btnPrint.href = pdfUrl;
+        btnPrint.classList.remove('hidden');
+    } else {
+        btnPrint.classList.add('hidden');
+    }
+
+    // เก็บข้อมูลสำหรับใช้กับ btn-esign-doc
+    window._lastCreatedDoc = { id: requestId, pdfUrl: pdfUrl };
+}
+
+// --- 6. ปุ่ม "กลับหน้าหลัก" ใน form-result ---
+function goToDashboardFromResult() {
+    document.getElementById('form-result').classList.add('hidden');
+    document.getElementById('request-form').classList.remove('hidden');
+    if (typeof clearRequestsCache === 'function') clearRequestsCache();
+    if (typeof fetchUserRequests === 'function') fetchUserRequests();
+    switchPage('dashboard-page');
+}
+
+// --- 7. ผูก Event Listeners ทั้งหมด ---
+document.addEventListener('DOMContentLoaded', function () {
+
+    // ผูก form-sig-canvas (pre-submission pad)
+    const formNavBtn = document.getElementById('user-nav-form');
+    if (formNavBtn) {
+        formNavBtn.addEventListener('click', () => setTimeout(initFormSignaturePad, 150));
+    }
+    // init ครั้งแรกเผื่อหน้า form เปิดตอนโหลด
+    setTimeout(initFormSignaturePad, 500);
+
+    // ปุ่มล้าง pre-submission pad
+    document.getElementById('form-sig-clear-btn')?.addEventListener('click', () => {
+        if (requesterSignaturePad) requesterSignaturePad.clear();
+    });
+
+    // ปุ่ม btn-esign-doc (post-submission)
+    document.getElementById('btn-esign-doc')?.addEventListener('click', openRequesterDrawSigModal);
+
+    // ปุ่มล้างใน draw modal
+    document.getElementById('req-sig-clear-btn')?.addEventListener('click', () => {
+        if (_reqDrawPadInstance) _reqDrawPadInstance.clear();
+    });
+
+    // ปุ่มยืนยันใน draw modal
+    document.getElementById('req-sig-confirm-btn')?.addEventListener('click', handleRequesterDrawConfirm);
+});
